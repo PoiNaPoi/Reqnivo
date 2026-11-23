@@ -41,13 +41,6 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Initialize CodeQL
-        uses: github/codeql-action/init@33d7b85da1a04171e211befe2c739303b9a4c066 # v4
-        with:
-          languages: ${{ matrix.language }}
-          build-mode: ${{ matrix.build-mode }}
-          config-file: ./.github/codeql/config.yml
-
       - name: Cache SwiftPM dependencies
         if: matrix.language == 'swift'
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
@@ -57,8 +50,21 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-swiftpm-
 
+      - name: Resolve SwiftPM dependencies
+        if: matrix.language == 'swift'
+        run: ./scripts/swift.sh package resolve
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@33d7b85da1a04171e211befe2c739303b9a4c066 # v4
+        with:
+          languages: ${{ matrix.language }}
+          build-mode: ${{ matrix.build-mode }}
+          config-file: ./.github/codeql/config.yml
+
       - name: Build Swift sources
         if: matrix.language == 'swift'
+        env:
+          REQNIVO_SKIP_RESOLVE: '1'
         run: ./scripts/swift.sh build
 
       - name: Analyze sources

@@ -39,7 +39,11 @@ if [ "$command_name" = "package" ] && [ "${1:-}" = "resolve" ]; then
 fi
 
 if { [ "$command_name" = "build" ] || [ "$command_name" = "test" ]; } && [ "$show_bin_path" = "false" ]; then
-  resolve_with_retry >&2
+  if [ "${REQNIVO_SKIP_RESOLVE:-0}" = "1" ]; then
+    set -- --disable-automatic-resolution "$@"
+  else
+    resolve_with_retry >&2
+  fi
 fi
 
 exec swift "$command_name" --disable-sandbox --cache-path "$PWD/.cache/swiftpm" "$@"
