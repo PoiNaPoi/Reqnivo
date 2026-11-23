@@ -20,6 +20,21 @@ test "$(lipo -archs "$extracted/Contents/MacOS/Reqnivo")" = arm64
 test "$(lipo -archs "$extracted/Contents/Resources/Engine/mitmproxy.app/Contents/MacOS/mitmdump")" = arm64
 test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$extracted/Contents/Info.plist")" = dev.reqnivo.mac
 test "$(/usr/libexec/PlistBuddy -c 'Print :LSMinimumSystemVersion' "$extracted/Contents/Info.plist")" = 14.0
+otool -l "$extracted/Contents/MacOS/Reqnivo" | grep -q '@executable_path/../Frameworks'
+test -d "$extracted/Contents/Frameworks/Sparkle.framework"
+test -x "$extracted/Contents/Frameworks/Sparkle.framework/Autoupdate"
+test -d "$extracted/Contents/Frameworks/Sparkle.framework/Updater.app"
+test -d "$extracted/Contents/Frameworks/Sparkle.framework/XPCServices/Downloader.xpc"
+test -d "$extracted/Contents/Frameworks/Sparkle.framework/XPCServices/Installer.xpc"
+test "$(/usr/libexec/PlistBuddy -c 'Print :SURequireSignedFeed' "$extracted/Contents/Info.plist")" = true
+test "$(/usr/libexec/PlistBuddy -c 'Print :SUVerifyUpdateBeforeExtraction' "$extracted/Contents/Info.plist")" = true
+test "$(/usr/libexec/PlistBuddy -c 'Print :SUAllowsAutomaticUpdates' "$extracted/Contents/Info.plist")" = false
+test "$(/usr/libexec/PlistBuddy -c 'Print :SUAutomaticallyUpdate' "$extracted/Contents/Info.plist")" = false
+test "$(/usr/libexec/PlistBuddy -c 'Print :SUEnableSystemProfile' "$extracted/Contents/Info.plist")" = false
+if [ "${REQNIVO_REQUIRE_UPDATER_CONFIG:-0}" = "1" ]; then
+    test -n "$(/usr/libexec/PlistBuddy -c 'Print :SUFeedURL' "$extracted/Contents/Info.plist")"
+    test -n "$(/usr/libexec/PlistBuddy -c 'Print :SUPublicEDKey' "$extracted/Contents/Info.plist")"
+fi
 for file in LICENSE THIRD_PARTY_NOTICES.md docs/PRIVACY.md docs/AUTHORIZED_USE.md docs/ENGINE_SOURCE.md; do
     cmp "$file" "$extracted/Contents/Resources/Legal/$(basename "$file")"
 done

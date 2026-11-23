@@ -23,8 +23,13 @@ not implement a developer-operated capture upload, account, analytics, or
 crash-reporting service. Proxied traffic still communicates with its destination
 servers unless a debugging rule changes it. Opening documentation uses your
 browser; building the app downloads the engine from mitmproxy's distribution site.
-Your operating system, browser, backup software, and external device tools have
-their own behavior and policies.
+To check for app updates, packaged builds contact GitHub (`raw.githubusercontent.com`)
+for a signed Sparkle `appcast.xml` feed and download update archives from GitHub
+Releases when you choose to update. GitHub receives standard HTTPS request metadata
+(such as your IP address and an app/Sparkle User-Agent); `SUEnableSystemProfile` is
+disabled so Reqnivo does not send hardware or OS profile statistics, and captured
+HTTP/HTTPS traffic is never uploaded. Your operating system, browser, backup software,
+and external device tools have their own behavior and policies.
 
 LAN mode requires explicit approval of a client's IP on the Mac for non-loopback
 connections. IP approvals are held
@@ -47,6 +52,7 @@ The default directory is `~/Library/Application Support/Reqnivo/`.
 | LAN device approval requests and approved IPs | Kept only in engine memory for the current capture. Revoke closes active connections. IP-based access does not verify device identity. |
 | CA certificate and private key | Remain in `ca/` for reuse. Installing the public CA adds trust on the selected device; quitting the app does not revoke it. |
 | Engine log and proxy recovery information | Local application data; no fixed automatic expiration is promised. Do not assume logs are free of sensitive information. |
+| Cached update policy (`update-policy.json`) | Stores verified minimum supported build metadata from signed update feeds so required-update blocks persist offline until updated. |
 
 Application data directories use private filesystem permissions. Capture files
 are not encrypted by Reqnivo; directory permissions do not protect against

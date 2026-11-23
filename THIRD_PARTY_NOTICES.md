@@ -19,6 +19,12 @@ The app's **Licenses & Notices…** menu opens the Legal directory. Original not
 inside the signed engine bundle are retained as well. The standalone mitmproxy
 MIT text is at `Contents/Resources/mitmproxy-LICENSE.txt`.
 
+## Updater
+
+Reqnivo uses **Sparkle 2.10.0** (`Sparkle.framework`, MIT license) via Swift Package
+Manager to verify signed update feeds and install app updates. Sparkle's framework
+and helper tools are embedded in `Contents/Frameworks/Sparkle.framework`.
+
 ## Engine
 
 Reqnivo redistributes the unmodified official **mitmproxy 12.2.3 macOS arm64**

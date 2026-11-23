@@ -62,6 +62,10 @@ the build's validation results and known issues.
 - **Signing:** Current builds are ad-hoc signed and have not been notarized by Apple.
   macOS may block the first launch. Review the download's source before allowing it
   through macOS Privacy & Security settings.
+- **In-app updates:** Packaged builds check for signed updates via Sparkle
+  (**Reqnivo → Check for Updates…**). Optional updates let you choose **Update** or
+  **Later**; required (force) updates block capture until updated. Releases prior to
+  the updater integration must be updated manually once from GitHub Releases.
 
 The minimum deployment target is macOS 14; testing on that version and first launch
 on a second Mac remain unverified.
@@ -179,7 +183,9 @@ release notes record known test failures for each build.
 
 GitHub automation is described in the [CI and security checks guide](docs/SECURITY_CHECKS.md),
 including Swift build/tests, engine integration tests, verified package artifacts,
-draft pre-releases on version tag pushes, CodeQL analysis for Swift/Python,
+draft pre-releases on version tag pushes, signed Sparkle appcast publishing on release
+publish (`updates/release-policy.json`, `SPARKLE_PUBLIC_ED_KEY` variable, and
+`SPARKLE_PRIVATE_ED_KEY` secret), CodeQL analysis for Swift/Python,
 and Dependabot updates for Actions.
 
 ## Feedback and contributions
