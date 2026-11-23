@@ -44,6 +44,14 @@ jobs:
           ref: ${{ steps.meta.outputs.tag }}
           persist-credentials: true
 
+      - name: Cache SwiftPM dependencies
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: .cache/swiftpm
+          key: ${{ runner.os }}-swiftpm-${{ hashFiles('Package.resolved') }}
+          restore-keys: |
+            ${{ runner.os }}-swiftpm-
+
       - name: Resolve Sparkle signing tools
         run: ./scripts/swift.sh package resolve
 
