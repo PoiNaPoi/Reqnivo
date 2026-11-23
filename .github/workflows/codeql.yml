@@ -59,7 +59,6 @@ jobs:
         env:
           REQNIVO_SKIP_RESOLVE: '1'
         run: |
-          echo "REQNIVO_MANIFEST_SWIFTC=$(xcrun --find swiftc)" >> "$GITHUB_ENV"
           time ./scripts/swift.sh build \
             -Xswiftc -module-cache-path -Xswiftc "$PWD/.cache/swift-modules"
           # Keep the shared manifest/SDK caches, but force source compilation under CodeQL.
@@ -76,9 +75,7 @@ jobs:
         if: matrix.language == 'swift'
         env:
           REQNIVO_SKIP_RESOLVE: '1'
-          SWIFT_EXEC_MANIFEST: ${{ github.workspace }}/scripts/codeql-swift-manifest.sh
         run: |
-          "$SWIFT_EXEC_MANIFEST" --version
           time ./scripts/swift.sh build --verbose \
             -Xswiftc -module-cache-path -Xswiftc "$PWD/.cache/swift-modules"
 

@@ -84,13 +84,6 @@ Swift resolve dependencies และ build เตรียม shared manifest/SD
 เพื่อแยกเวลาที่เสียกับการเตรียม build ออกจากการ compile โดยยังใช้ runner macOS 15 เดิม
 ผลด้านความเร็วต้องเทียบเวลารวมของขั้นเตรียม cache และ build บน GitHub Actions จริง
 
-เฉพาะขั้น build ของ CodeQL ตั้ง `SWIFT_EXEC_MANIFEST` ให้ใช้
-`scripts/codeql-swift-manifest.sh` รัน compiler ของ `Package.swift` ผ่าน
-`codeql database trace-command --no-tracing` โดยไม่เปลี่ยน compiler ของซอร์สแอป
-wrapper จะหยุดพร้อม error หาก CodeQL tracer ยังถูก inject ใน compiler ของ manifest
-ซอร์สใน `Sources` ยังต้อง compile ใหม่ภายใต้ CodeQL ตามเดิม ส่วน package manifests
-ไม่รวมในการสแกนนี้ การ build/test ปกติไม่ได้ใช้ wrapper นี้
-
 Actions ใน CI และ CodeQL pin ด้วย full commit SHA เพื่อให้แต่ละ run ใช้โค้ดรุ่นที่ระบุแน่นอน
 
 ระบบนี้ไม่ดาวน์โหลดหรือเปิดแอป mitmproxy และไม่วิเคราะห์ binary ใน `vendor` หรือ `dist`
