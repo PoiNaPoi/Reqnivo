@@ -75,6 +75,15 @@ test ที่ต้องติดตั้ง CA บน Android emulator ย�
 - Python: วิเคราะห์ `Sources` และ `scripts` บน Linux โดยไม่รันสคริปต์
 - Dependabot: ตรวจเวอร์ชัน Actions ที่ workflow ใช้ทุกสัปดาห์ และเปิด PR เสนอให้อัปเดต
 
+Swift resolve dependencies และ build เตรียม shared manifest/SDK caches ก่อนเปิด CodeQL
+ทั้งสองขั้น build ส่ง `-module-cache-path` ให้ Swift compiler ใช้ `.cache/swift-modules`
+โดยตรง เพื่อไม่ให้ SDK module cache อยู่ใน `.build` ที่กำลังจะล้าง
+แล้วรัน `swift package clean` เพื่อล้างผล build ของแอป โดยไม่ล้าง shared caches
+จากนั้น compile ซอร์สใหม่ภายใต้ CodeQL เพื่อไม่ข้ามการวิเคราะห์ด้วย incremental build
+ขั้นเตรียม cache และขั้น build ภายใต้ CodeQL แสดงเวลารัน ส่วนขั้นหลังเปิด verbose log
+เพื่อแยกเวลาที่เสียกับการเตรียม build ออกจากการ compile โดยยังใช้ runner macOS 15 เดิม
+ผลด้านความเร็วต้องเทียบเวลารวมของขั้นเตรียม cache และ build บน GitHub Actions จริง
+
 Actions ใน CI และ CodeQL pin ด้วย full commit SHA เพื่อให้แต่ละ run ใช้โค้ดรุ่นที่ระบุแน่นอน
 
 ระบบนี้ไม่ดาวน์โหลดหรือเปิดแอป mitmproxy และไม่วิเคราะห์ binary ใน `vendor` หรือ `dist`
