@@ -3,6 +3,7 @@ import SwiftUI
 
 struct ContentView: View {
     @ObservedObject var model: CaptureModel
+    @ObservedObject var updateController: UpdateController
     @Environment(\.openWindow) private var openWindow
     @State private var inspectorVisible = true
     @State private var columnResetRevision = 0
@@ -88,6 +89,23 @@ struct ContentView: View {
     }
 
     var body: some View {
+        Group {
+            if updateController.isBlocked {
+                UpdateBlockingView(updateController: updateController, captureModel: model)
+                    .frame(minWidth: 1050, minHeight: 700)
+            } else {
+                VStack(spacing: 0) {
+                    UpdateNotificationBanner(updateController: updateController)
+                    workspaceBody
+                }
+            }
+        }
+        .task {
+            await updateController.checkOnLaunch(captureModel: model)
+        }
+    }
+
+    private var workspaceBody: some View {
         NavigationSplitView {
             VStack(alignment: .leading, spacing: 0) {
                 List(selection: $model.sidebarSelection) {
@@ -304,9 +322,6 @@ struct ContentView: View {
         .alert("Reqnivo", isPresented: Binding(get: { model.error != nil }, set: { if !$0 { model.error = nil } })) {
             Button("OK") { model.error = nil }
         } message: { Text(model.error ?? "") }
-        .task {
-            await model.startOnLaunch()
-        }
     }
 }
 

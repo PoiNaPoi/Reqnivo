@@ -90,6 +90,9 @@ jobs:
       - name: Verify engine source archives
         run: python3 scripts/verify-engine-sources.py
       - name: Build application
+        env:
+          REQNIVO_SPARKLE_PUBLIC_KEY: ${{ vars.SPARKLE_PUBLIC_ED_KEY }}
+          REQNIVO_REQUIRE_UPDATER_CONFIG: ${{ github.ref_type == 'tag' && '1' || '0' }}
         run: ./scripts/build-app.sh 2>&1 | tee package.log
       - name: Check release tag matches application version
         if: github.ref_type == 'tag'
@@ -102,6 +105,8 @@ jobs:
             exit 1
           fi
       - name: Package and verify ZIP
+        env:
+          REQNIVO_REQUIRE_UPDATER_CONFIG: ${{ github.ref_type == 'tag' && '1' || '0' }}
         run: ./scripts/verify-app-package.sh
       - name: Package and verify companion engine sources
         if: github.ref_type == 'tag'

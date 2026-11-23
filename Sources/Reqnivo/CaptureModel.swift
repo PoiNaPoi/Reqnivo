@@ -79,6 +79,7 @@ final class CaptureModel: ObservableObject {
     @Published var busy = false
     @Published var status = "Ready to capture"
     @Published var error: String?
+    var isUpdateBlocked: () -> Bool = { false }
     private let settingsStore: AppSettingsStore
     private var settingsReady = false
     @Published private var settings = AppSettings() {
@@ -316,7 +317,7 @@ final class CaptureModel: ObservableObject {
     }
 
     func startOnLaunch() async {
-        guard !didLaunch else { return }
+        guard !didLaunch, !isUpdateBlocked() else { return }
         didLaunch = true
         await start()
     }
@@ -407,6 +408,7 @@ final class CaptureModel: ObservableObject {
         busy = true
         defer { busy = false }
         do {
+            if isUpdateBlocked() { throw AppFailure("Update required before starting a new capture") }
             if recoveryNeeded { throw AppFailure("Restore Mac Proxy before starting a new capture") }
             status = "Starting engine…"
             engine.discardCapture()
@@ -493,6 +495,39 @@ final class CaptureModel: ObservableObject {
                 if running { setMacProxy = false }
                 recoveryNeeded = false
             } catch { self.error = error.localizedDescription }
+        }
+    }
+
+    func enforceUpdateBlock() async {
+        while busy { try? await Task.sleep(for: .milliseconds(50)) }
+        if running {
+            await stop()
+        } else if recoveryNeeded {
+            await restoreProxyForLifecycle()
+        }
+    }
+
+    func prepareForRelaunch() async -> Bool {
+        while busy { try? await Task.sleep(for: .milliseconds(50)) }
+        if running {
+            await stop()
+        } else if recoveryNeeded {
+            await restoreProxyForLifecycle()
+        }
+        return !recoveryNeeded
+    }
+
+    private func restoreProxyForLifecycle() async {
+        guard !busy else { return }
+        busy = true
+        defer { busy = false }
+        do {
+            try await changeMacProxy(false)
+            if running { setMacProxy = false }
+            recoveryNeeded = false
+        } catch {
+            self.error = error.localizedDescription
+            recoveryNeeded = FileManager.default.fileExists(atPath: SystemProxy.journalURL(engine.paths).path)
         }
     }
 

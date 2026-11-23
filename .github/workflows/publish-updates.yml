@@ -1,0 +1,119 @@
+name: Publish Signed Updates
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag to publish to updates branch (e.g. v0.0.7)"
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  publish-appcast:
+    name: Sign & Publish Appcast
+    if: github.event_name == 'workflow_dispatch' || github.event.release.draft == false
+    runs-on: macos-15
+    timeout-minutes: 20
+    steps:
+      - name: Determine release tag
+        id: meta
+        env:
+          EVENT_TAG: ${{ github.event.release.tag_name }}
+          INPUT_TAG: ${{ inputs.tag }}
+        run: |
+          tag="${EVENT_TAG:-$INPUT_TAG}"
+          if [[ -z "$tag" ]]; then
+            echo "No release tag provided" >&2
+            exit 1
+          fi
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "version=${tag#v}" >> "$GITHUB_OUTPUT"
+
+      - name: Check out tagged source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ steps.meta.outputs.tag }}
+          persist-credentials: true
+
+      - name: Resolve Sparkle signing tools
+        run: ./scripts/swift.sh package resolve
+
+      - name: Download published ZIP asset and release notes
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ steps.meta.outputs.tag }}
+        run: |
+          mkdir -p release-download
+          gh release download "$TAG" --pattern "Reqnivo-*-macOS-arm64.zip" --dir release-download
+          gh release view "$TAG" --json body --jq '.body' > release-download/notes.md
+
+      - name: Fetch existing updates branch
+        run: |
+          mkdir -p updates-worktree
+          if git fetch origin updates:refs/remotes/origin/updates 2>/dev/null; then
+            git worktree add updates-worktree origin/updates
+          else
+            git worktree add --orphan -b updates updates-worktree
+          fi
+
+      - name: Generate and sign appcast.xml
+        env:
+          SPARKLE_PRIVATE_ED_KEY: ${{ secrets.SPARKLE_PRIVATE_ED_KEY }}
+          TAG: ${{ steps.meta.outputs.tag }}
+          VERSION: ${{ steps.meta.outputs.version }}
+          REPO: ${{ github.repository }}
+        run: |
+          if [[ -z "$SPARKLE_PRIVATE_ED_KEY" ]]; then
+            echo "SPARKLE_PRIVATE_ED_KEY secret is required" >&2
+            exit 1
+          fi
+          zip_path="$(ls release-download/Reqnivo-*-macOS-arm64.zip | head -n 1)"
+          zip_name="$(basename "$zip_path")"
+          build_num="$(grep -o 'app_build="${REQNIVO_BUILD:-[0-9]*}"' scripts/build-app.sh | grep -o '[0-9]*')"
+          if [[ -z "$build_num" ]]; then
+            echo "Could not determine CFBundleVersion build number from scripts/build-app.sh" >&2
+            exit 1
+          fi
+          sign_update=".build/artifacts/sparkle/Sparkle/bin/sign_update"
+          ed_sig="$(printf '%s' "$SPARKLE_PRIVATE_ED_KEY" | "$sign_update" --ed-key-file - -p "$zip_path")"
+          download_url="https://github.com/${REPO}/releases/download/${TAG}/${zip_name}"
+          existing_arg=()
+          if [[ -f updates-worktree/appcast.xml ]]; then
+            existing_arg=(--existing-appcast updates-worktree/appcast.xml)
+          fi
+          python3 scripts/generate-appcast.py \
+            --version "$VERSION" \
+            --build "$build_num" \
+            --zip-path "$zip_path" \
+            --download-url "$download_url" \
+            --ed-signature "$ed_sig" \
+            --policy-file updates/release-policy.json \
+            --notes-file release-download/notes.md \
+            "${existing_arg[@]}" \
+            --output updates-worktree/appcast.xml
+          printf '%s' "$SPARKLE_PRIVATE_ED_KEY" | "$sign_update" --ed-key-file - --disable-signing-warning updates-worktree/appcast.xml
+
+      - name: Commit and push updates branch
+        working-directory: updates-worktree
+        env:
+          TAG: ${{ steps.meta.outputs.tag }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add appcast.xml
+          if git diff --cached --quiet; then
+            echo "No changes to appcast.xml"
+            exit 0
+          fi
+          git commit -m "Publish signed appcast for $TAG"
+          git push origin HEAD:updates
