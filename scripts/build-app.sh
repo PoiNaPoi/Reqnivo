@@ -2,8 +2,8 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 configuration="${1:-release}"
-app_version="${REQNIVO_VERSION:-0.0.7}"
-app_build="${REQNIVO_BUILD:-7}"
+app_version="${REQNIVO_VERSION:-0.0.8}"
+app_build="${REQNIVO_BUILD:-8}"
 feed_url="${REQNIVO_FEED_URL:-https://raw.githubusercontent.com/PoiNaPoi/Reqnivo/updates/appcast.xml}"
 public_ed_key="${REQNIVO_SPARKLE_PUBLIC_KEY:-}"
 if [ -z "$public_ed_key" ] && [ -f updates/sparkle-public-key.txt ]; then
