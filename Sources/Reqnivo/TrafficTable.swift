@@ -4,7 +4,6 @@ import SwiftUI
 struct TrafficTable: NSViewRepresentable {
     let rows: [TrafficFlow]
     @Binding var selectedID: String?
-    var selectedIDs: Set<String> = []
     var pinnedIDs: Set<String> = []
     var filterRevision = 0
     var columnResetRevision = 0
@@ -16,6 +15,7 @@ struct TrafficTable: NSViewRepresentable {
     var onMapLocal: (TrafficFlow) -> Void = { _ in }
     var onBreakpoint: (TrafficFlow) -> Void = { _ in }
     var onReloaded: () -> Void = {}
+    var autosaveName = "Reqnivo.TrafficTable"
 
     static let columns: [(id: String, title: String, width: Double)] = [
         ("id", "ID", 48), ("method", "Method", 68), ("status", "Status", 84),
@@ -26,12 +26,13 @@ struct TrafficTable: NSViewRepresentable {
     func makeCoordinator() -> Coordinator { Coordinator(parent: self) }
 
     func makeNSView(context: Context) -> NSScrollView {
-        let table = NSTableView()
+        let table = TrafficTableView()
         table.delegate = context.coordinator
         table.dataSource = context.coordinator
         table.rowHeight = 28
+        table.backgroundColor = WorkspaceStyle.panel
         table.usesAlternatingRowBackgroundColors = true
-        table.allowsMultipleSelection = true
+        table.allowsMultipleSelection = false
         table.columnAutoresizingStyle = .uniformColumnAutoresizingStyle
         table.style = .fullWidth
         let menu = NSMenu()
@@ -47,7 +48,7 @@ struct TrafficTable: NSViewRepresentable {
             column.sortDescriptorPrototype = NSSortDescriptor(key: identifier, ascending: true)
             table.addTableColumn(column)
         }
-        table.autosaveName = "Reqnivo.TrafficTable"
+        table.autosaveName = NSTableView.AutosaveName(autosaveName)
         table.autosaveTableColumns = true
         table.setAccessibilityLabel("Captured traffic")
         let scroll = NSScrollView()
@@ -56,28 +57,17 @@ struct TrafficTable: NSViewRepresentable {
         scroll.documentView = table
         scroll.hasVerticalScroller = true
         scroll.hasHorizontalScroller = true
+        scroll.backgroundColor = WorkspaceStyle.panel
         context.coordinator.table = table
+        table.onMouseSelectionEnded = { [weak coordinator = context.coordinator] in
+            coordinator?.finishMouseSelection()
+        }
         table.sortDescriptors = [NSSortDescriptor(key: TrafficColumn.number.rawValue, ascending: false)]
         return scroll
     }
 
     func updateNSView(_ view: NSScrollView, context: Context) {
-        let coordinator = context.coordinator
-        let changedFilter = coordinator.parent.filterRevision != filterRevision
-        let changedPins = coordinator.parent.pinnedIDs != pinnedIDs
-        let resetColumns = coordinator.parent.columnResetRevision != columnResetRevision
-        coordinator.parent = self
-        guard let table = coordinator.table else { return }
-        coordinator.updating = true
-        defer { coordinator.updating = false }
-        if resetColumns { coordinator.resetColumns(table) }
-        if coordinator.sourceRows != rows || changedPins {
-            coordinator.sourceRows = rows
-            coordinator.sortAndReload(table, followFirstOnInsert: !changedFilter && !changedPins)
-        } else {
-            coordinator.restoreSelection(table)
-        }
-        onReloaded()
+        context.coordinator.update(self)
     }
 
     final class Coordinator: NSObject, NSTableViewDataSource, NSTableViewDelegate, NSMenuDelegate {
@@ -86,12 +76,43 @@ struct TrafficTable: NSViewRepresentable {
         var rows: [TrafficFlow] = []
         weak var table: NSTableView?
         var updating = false
-        private var selection: Set<String> {
-            parent.selectedIDs.union(parent.selectedID.map { [$0] } ?? [])
+        private var deferredParent: TrafficTable?
+
+        func update(_ next: TrafficTable) {
+            guard let table else { return }
+            // AppKit commits a mouse selection only after its tracking loop ends.
+            if let table = table as? TrafficTableView, table.isHandlingMouseSelection {
+                deferredParent = next
+                return
+            }
+            applyUpdate(next)
         }
 
-        private func publishSelection(_ ids: Set<String>, primary: String?) {
-            if let onSelection = parent.onSelection { onSelection(ids, primary) }
+        func finishMouseSelection() {
+            guard let next = deferredParent else { return }
+            deferredParent = nil
+            applyUpdate(next)
+        }
+
+        private func applyUpdate(_ next: TrafficTable) {
+            guard let table else { return }
+            let changedFilter = parent.filterRevision != next.filterRevision
+            let changedPins = parent.pinnedIDs != next.pinnedIDs
+            let resetRequested = parent.columnResetRevision != next.columnResetRevision
+            parent = next
+            updating = true
+            defer { updating = false }
+            if resetRequested { resetColumns(table) }
+            if sourceRows != next.rows || changedPins {
+                sourceRows = next.rows
+                sortAndReload(table, followFirstOnInsert: !changedFilter && !changedPins)
+            } else {
+                restoreSelection(table)
+            }
+            next.onReloaded()
+        }
+        private func publishSelection(_ primary: String?) {
+            if let onSelection = parent.onSelection { onSelection(primary.map { [$0] } ?? [], primary) }
             else { parent.selectedID = primary }
         }
 
@@ -145,8 +166,8 @@ struct TrafficTable: NSViewRepresentable {
             breakpoint.representedObject = flow
             breakpoint.isEnabled = flow.tlsPassthrough != true
             menu.addItem(breakpoint)
-            let targets = selection.contains(flow.id) ? selection : [flow.id]
-            let pin = NSMenuItem(title: targets.isSubset(of: parent.pinnedIDs) ? "Unpin Selected" : "Pin Selected",
+            let targets: Set<String> = [flow.id]
+            let pin = NSMenuItem(title: parent.pinnedIDs.contains(flow.id) ? "Unpin Request" : "Pin Request",
                                  action: #selector(pinTraffic(_:)), keyEquivalent: "")
             pin.target = self
             pin.representedObject = PinAction(ids: targets, pinned: !targets.isSubset(of: parent.pinnedIDs))
@@ -198,7 +219,6 @@ struct TrafficTable: NSViewRepresentable {
 
         func sortAndReload(_ table: NSTableView, followFirstOnInsert: Bool = false) {
             let previousSelection = parent.selectedID
-            let previousSelections = selection
             let revision = parent.filterRevision
             let pins = parent.pinnedIDs
             let wasFirst = !rows.isEmpty && (rows.first?.id == previousSelection ||
@@ -211,7 +231,7 @@ struct TrafficTable: NSViewRepresentable {
             let sorted = sort.sorted(sourceRows)
             rows = pins.isEmpty ? sorted : sorted.filter { pins.contains($0.id) } + sorted.filter { !pins.contains($0.id) }
             table.reloadData()
-            if followFirstOnInsert, pins.isEmpty, previousSelections.count <= 1, wasFirst,
+            if followFirstOnInsert, pins.isEmpty, wasFirst,
                rows.contains(where: { !previousIDs.contains($0.id) }),
                let firstID = rows.first?.id, firstID != previousSelection {
                 table.selectRowIndexes(IndexSet(integer: 0), byExtendingSelection: false)
@@ -219,12 +239,12 @@ struct TrafficTable: NSViewRepresentable {
                 // Publish outside updateNSView; reject the update if selection/sort changed meanwhile.
                 DispatchQueue.main.async { [weak self] in
                     guard let self, self.parent.selectedID == previousSelection,
-                          self.selection == previousSelections, self.parent.filterRevision == revision,
+                          self.parent.filterRevision == revision,
                           self.parent.pinnedIDs == pins,
                           table.sortDescriptors.first?.key == descriptor?.key,
                           table.sortDescriptors.first?.ascending == descriptor?.ascending,
                           self.rows.first?.id == firstID else { return }
-                    self.publishSelection([firstID], primary: firstID)
+                    self.publishSelection(firstID)
                 }
             } else {
                 restoreSelection(table)
@@ -232,8 +252,9 @@ struct TrafficTable: NSViewRepresentable {
         }
 
         func restoreSelection(_ table: NSTableView) {
-            let selected = selection
-            let indexes = selected.isEmpty ? IndexSet() : IndexSet(rows.indices.filter { selected.contains(rows[$0].id) })
+            let indexes = parent.selectedID.flatMap { selected in
+                rows.firstIndex { $0.id == selected }.map { IndexSet(integer: $0) }
+            } ?? IndexSet()
             if indexes != table.selectedRowIndexes {
                 table.selectRowIndexes(indexes, byExtendingSelection: false)
             }
@@ -242,7 +263,7 @@ struct TrafficTable: NSViewRepresentable {
         func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int) -> NSView? {
             guard rows.indices.contains(row), let column = tableColumn else { return nil }
             let identifier = column.identifier
-            let cell = (tableView.makeView(withIdentifier: identifier, owner: self) as? NSTableCellView) ?? makeCell(identifier)
+            let cell = (tableView.makeView(withIdentifier: identifier, owner: self) as? TrafficCellView) ?? makeCell(identifier)
             let flow = rows[row]
             let value: String
             let accessibilityValue: String
@@ -292,7 +313,17 @@ struct TrafficTable: NSViewRepresentable {
             }
             cell.textField?.stringValue = value
             cell.textField?.setAccessibilityLabel(accessibilityValue)
-            cell.textField?.textColor = flow.state == "error" || (flow.status ?? 0) >= 400 ? .systemRed : (flow.state.hasPrefix("paused-") ? .systemOrange : .labelColor)
+            if identifier.rawValue != "status" {
+                cell.foregroundColor = WorkspaceStyle.textPrimary
+            } else if flow.state == "error" || (flow.status ?? 0) >= 400 {
+                cell.foregroundColor = WorkspaceStyle.error
+            } else if flow.state.hasPrefix("paused-") {
+                cell.foregroundColor = WorkspaceStyle.warning
+            } else if flow.status != nil {
+                cell.foregroundColor = WorkspaceStyle.success
+            } else {
+                cell.foregroundColor = WorkspaceStyle.textSecondary
+            }
             switch identifier.rawValue {
             case "id": cell.toolTip = flow.id
             case "path": cell.toolTip = flow.url
@@ -302,11 +333,12 @@ struct TrafficTable: NSViewRepresentable {
             return cell
         }
 
-        private func makeCell(_ id: NSUserInterfaceItemIdentifier) -> NSTableCellView {
-            let cell = NSTableCellView()
+        private func makeCell(_ id: NSUserInterfaceItemIdentifier) -> TrafficCellView {
+            let cell = TrafficCellView()
             cell.identifier = id
             let label = NSTextField(labelWithString: "")
-            label.font = .monospacedSystemFont(ofSize: 11, weight: .regular)
+            label.font = id.rawValue == "host" || id.rawValue == "source"
+                ? .systemFont(ofSize: 12) : .monospacedSystemFont(ofSize: 12, weight: .regular)
             label.lineBreakMode = .byTruncatingTail
             label.translatesAutoresizingMaskIntoConstraints = false
             cell.addSubview(label)
@@ -321,17 +353,47 @@ struct TrafficTable: NSViewRepresentable {
 
         func tableViewSelectionDidChange(_ notification: Notification) {
             guard !updating, let table else { return }
-            let visible = Set(rows.map(\.id))
-            let chosen = Set(table.selectedRowIndexes.compactMap { rows.indices.contains($0) ? rows[$0].id : nil })
-            let ids = selection.subtracting(visible).union(chosen)
-            let added = chosen.subtracting(selection)
-            let lead = rows.indices.contains(table.selectedRow) ? rows[table.selectedRow].id : nil
-            let primary = lead.flatMap { added.contains($0) ? $0 : nil } ??
-                rows.first(where: { added.contains($0.id) })?.id ??
-                parent.selectedID.flatMap { ids.contains($0) ? $0 : nil } ??
-                rows.first(where: { chosen.contains($0.id) })?.id
-            if let primary, let index = rows.firstIndex(where: { $0.id == primary }) { table.scrollRowToVisible(index) }
-            publishSelection(ids, primary: primary)
+            let primary = rows.indices.contains(table.selectedRow) ? rows[table.selectedRow].id : nil
+            if primary != nil { table.scrollRowToVisible(table.selectedRow) }
+            publishSelection(primary)
+        }
+    }
+
+    final class TrafficTableView: NSTableView {
+        var isHandlingMouseSelection = false
+        var onMouseSelectionEnded: (() -> Void)?
+
+        override func mouseDown(with event: NSEvent) {
+            let point = convert(event.locationInWindow, from: nil)
+            guard row(at: point) >= 0 else {
+                window?.makeFirstResponder(self)
+                return
+            }
+            isHandlingMouseSelection = true
+            defer {
+                isHandlingMouseSelection = false
+                onMouseSelectionEnded?()
+            }
+            super.mouseDown(with: event)
+        }
+    }
+
+    final class TrafficCellView: NSTableCellView {
+        var foregroundColor = WorkspaceStyle.textPrimary {
+            didSet { updateTextColor() }
+        }
+
+        override var backgroundStyle: NSView.BackgroundStyle {
+            didSet { updateTextColor() }
+        }
+
+        override func viewDidChangeEffectiveAppearance() {
+            super.viewDidChangeEffectiveAppearance()
+            updateTextColor()
+        }
+
+        private func updateTextColor() {
+            textField?.textColor = backgroundStyle == .emphasized ? .alternateSelectedControlTextColor : foregroundColor
         }
     }
 }

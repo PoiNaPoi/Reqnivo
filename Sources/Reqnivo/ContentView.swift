@@ -4,12 +4,36 @@ import SwiftUI
 struct ContentView: View {
     @ObservedObject var model: CaptureModel
     @ObservedObject var updateController: UpdateController
+
+    var body: some View {
+        Group {
+            if updateController.isBlocked {
+                UpdateBlockingView(updateController: updateController, captureModel: model)
+            } else {
+                VStack(spacing: 0) {
+                    UpdateNotificationBanner(updateController: updateController)
+                    CaptureWorkspace(model: model)
+                }
+            }
+        }
+        .frame(minWidth: 1050, minHeight: 700)
+        .task {
+            await updateController.checkOnLaunch(captureModel: model)
+        }
+        .alert("Reqnivo", isPresented: Binding(get: { model.error != nil }, set: { if !$0 { model.error = nil } })) {
+            Button("OK") { model.error = nil }
+        } message: { Text(model.error ?? "") }
+    }
+}
+
+struct CaptureWorkspace: View {
+    @ObservedObject var model: CaptureModel
+    var autosavePrefix = "Reqnivo"
     @Environment(\.openWindow) private var openWindow
     @State private var inspectorVisible = true
     @State private var columnResetRevision = 0
-    @State private var showSearchHelp = false
     @State private var showLANDevices = false
-    @FocusState private var searchFocused: Bool
+    @State private var searchFocusRequest = 0
 
     private var orderedHosts: [String] {
         model.hosts.filter { model.pinnedHosts.contains($0) } + model.hosts.filter { !model.pinnedHosts.contains($0) }
@@ -39,73 +63,49 @@ struct ContentView: View {
         }
     }
 
-    private var captureToolbar: some View {
-        HStack(spacing: 6) {
-            Button(action: model.toggle) {
-                ToolbarLabel(model.busy ? "Please wait…" : (model.running ? "Stop" : "Start Capture"),
-                      systemImage: model.running ? "stop.fill" : "record.circle")
-                    .foregroundStyle(model.running ? Color.red : Color.accentColor)
-            }
-            .disabled(model.busy)
-            .keyboardShortcut("r", modifiers: [.command])
-            .help(model.running ? "Stop capture" : "Start capture")
-            .accessibilityLabel(model.busy ? "Please wait" : (model.running ? "Stop capture" : "Start capture"))
-            Button { model.clearDisplay() } label: { ToolbarLabel("Clear", systemImage: "trash") }
+    @ToolbarContentBuilder private var workspaceToolbar: some ToolbarContent {
+        ToolbarItemGroup(placement: .primaryAction) {
+            CaptureToolbarButton(model: model)
+                .keyboardShortcut("r", modifiers: [.command])
+            StackedToolbarButton(title: "Clear", systemImage: "trash") { model.clearDisplay() }
                 .help("Clear Display")
                 .accessibilityLabel("Clear display")
-            Divider().frame(height: 30).padding(.horizontal, 6)
-            Button { model.showMapLocalRules = true } label: { ToolbarLabel("Map Local", systemImage: "arrow.triangle.branch") }
+            Divider().frame(height: 28)
+            StackedToolbarButton(title: "Map Local", systemImage: "arrow.triangle.branch") { model.showMapLocalRules = true }
+                .help("Manage Map Local rules")
                 .accessibilityLabel("Map Local")
-            Button { model.showBreakpoints = true } label: {
-                ToolbarLabel(model.paused.isEmpty ? "Breakpoints" : "Breakpoints (\(model.paused.count))", systemImage: "pause.circle")
-            }
-            .accessibilityLabel(model.paused.isEmpty ? "Breakpoints" : "Breakpoints, \(model.paused.count) paused")
-            Spacer(minLength: 12)
-            Button { model.showHTTPSDecryption = true } label: { ToolbarLabel("HTTPS", systemImage: "lock.open") }
+            StackedToolbarButton(title: model.paused.isEmpty ? "Breakpoints" : "Breakpoints (\(model.paused.count))",
+                                 systemImage: "pause.circle") { model.showBreakpoints = true }
+                .monospacedDigit()
+                .help("Manage breakpoint rules")
+                .accessibilityLabel(model.paused.isEmpty ? "Breakpoints" : "Breakpoints, \(model.paused.count) paused")
+            StackedToolbarButton(title: "HTTPS", systemImage: "lock.open") { model.showHTTPSDecryption = true }
                 .help("Choose domains to decrypt")
                 .accessibilityLabel("HTTPS decryption")
-            Button { model.showSetup = true } label: { ToolbarLabel("Settings", systemImage: "slider.horizontal.3") }
-                .help("Capture Settings and device setup")
-                .accessibilityLabel("Capture settings and device setup")
-            Button { openWindow(id: "install-certificate") } label: { ToolbarLabel("Certificate", systemImage: "checkmark.seal") }
-                .help("Install Certificate")
+            StackedToolbarButton(title: "Settings", systemImage: "slider.horizontal.3") { model.showSetup = true }
+                .help("Capture settings")
+                .accessibilityLabel("Capture settings")
+            StackedToolbarButton(title: "Certificate", systemImage: "checkmark.seal") { openWindow(id: "install-certificate") }
+                .help("Install certificate")
                 .accessibilityLabel("Install certificate")
             Menu {
                 Toggle("Inspector on Right", isOn: $model.inspectorOnRight)
                 Toggle("Stack Request and Response", isOn: $model.messagesStacked)
                 Button("Reset Traffic Columns") { columnResetRevision += 1 }
-                Button("Focus Traffic Filter") { searchFocused = true }.keyboardShortcut("f")
+                Button("Focus Traffic Filter") { searchFocusRequest += 1 }.keyboardShortcut("f")
             } label: {
-                ToolbarLabel("Layout", systemImage: "rectangle.split.2x2")
+                Label("Layout", systemImage: "rectangle.split.2x2")
             }
             .menuStyle(.button)
+            .buttonStyle(StackedToolbarButtonStyle())
             .menuIndicator(.hidden)
             .fixedSize()
             .help("Workspace Layout")
             .accessibilityLabel("Workspace layout")
         }
-        .buttonStyle(ToolbarButtonStyle())
-        .fixedSize()
     }
 
     var body: some View {
-        Group {
-            if updateController.isBlocked {
-                UpdateBlockingView(updateController: updateController, captureModel: model)
-                    .frame(minWidth: 1050, minHeight: 700)
-            } else {
-                VStack(spacing: 0) {
-                    UpdateNotificationBanner(updateController: updateController)
-                    workspaceBody
-                }
-            }
-        }
-        .task {
-            await updateController.checkOnLaunch(captureModel: model)
-        }
-    }
-
-    private var workspaceBody: some View {
         NavigationSplitView {
             VStack(alignment: .leading, spacing: 0) {
                 List(selection: $model.sidebarSelection) {
@@ -180,92 +180,68 @@ struct ContentView: View {
                         }
                     }
                 }
+                .font(.system(size: 13))
+                .scrollContentBackground(.hidden)
+                .background(Color(nsColor: WorkspaceStyle.sidebar))
                 Divider()
-                VStack(alignment: .leading, spacing: 8) {
-                    Label(model.captureStatusText, systemImage: model.running ? "record.circle" : "stop.circle")
-                        .accessibilityLabel("Capture engine: \(model.captureStatusText)")
-                    Label(model.lanStatusText, systemImage: "wifi")
-                        .accessibilityLabel("Network access: \(model.lanStatusText)")
-                    if model.allowLAN {
-                        Button("LAN Devices (\(model.lanDevices.filter { !$0.approved }.count) waiting)") {
-                            showLANDevices = true
-                        }
-                    }
-                    MacCaptureToggle(model: model)
-                    Label(model.macProxyStatusText, systemImage: "desktopcomputer")
-                        .accessibilityLabel("Mac system proxy: \(model.macProxyStatusText)")
-                    Label(model.caStatusText, systemImage: model.caTrustStatus == .trusted ? "lock.shield" : "exclamationmark.shield")
-                        .accessibilityLabel("CA certificate: \(model.caStatusText)")
-                    Button("Set Up Capture & HTTPS…") { model.showSetup = true }
-                        .buttonStyle(.link)
-                        .help("Trust is checked on this Mac only. Phones, emulators, and apps with their own trust stores require separate CA setup.")
-                }.font(.caption).foregroundStyle(.secondary).padding(12)
-            }.navigationSplitViewColumnWidth(min: 200, ideal: 240, max: 360)
+                CaptureStatusView(model: model, onLANDevices: { showLANDevices = true },
+                                  onCertificate: { openWindow(id: "install-certificate") })
+            }
+            .background(Color(nsColor: WorkspaceStyle.sidebar))
+            .navigationSplitViewColumnWidth(min: 200, ideal: 240, max: 360)
         } detail: {
             VStack(spacing: 0) {
                 HStack(spacing: 8) {
                     Label(scopeTitle.title, systemImage: scopeTitle.icon)
-                        .font(.headline).lineLimit(1)
+                        .font(.system(size: 14, weight: .semibold)).lineLimit(1)
+                        .help(scopeTitle.title)
+                        .layoutPriority(-1)
                     Spacer()
+                    Text("\(model.rows.count.formatted()) of \(model.retainedCount.formatted()) retained")
+                        .font(.caption).foregroundStyle(.secondary).monospacedDigit()
                     Button { inspectorVisible.toggle() } label: {
                         Label(inspectorVisible && model.selectedID != nil ? "Hide Inspector" : "Show Inspector", systemImage: "sidebar.right")
                     }
+                    .labelStyle(.iconOnly)
                     .disabled(model.selectedID == nil)
-                    .help("Select a request to inspect its details")
-                    Text("\(model.rows.count.formatted()) of \(model.retainedCount.formatted()) retained")
-                        .font(.caption).foregroundStyle(.secondary).monospacedDigit()
-                }.padding(.horizontal, 14).padding(.vertical, 10)
+                    .help(model.selectedID == nil ? "Select a request to inspect its details" :
+                          (inspectorVisible ? "Hide Inspector" : "Show Inspector"))
+                }.padding(.horizontal, 12).padding(.vertical, 8)
+                TrafficFilterControls(model: model, focusRequest: searchFocusRequest)
                 Divider()
-                HStack(spacing: 8) {
-                    Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
-                    TextField("Search traffic…", text: $model.search)
-                        .textFieldStyle(.plain).focused($searchFocused)
-                        .accessibilityLabel("Filter traffic")
-                        .help("AND filters: host, path, method, status, type, state. Prefix - to exclude. Quote values containing spaces.")
-                        .onSubmit { model.applySearch() }
-                        .onExitCommand {
-                            if !model.search.isEmpty { model.search = "" }
-                            else { searchFocused = false }
-                        }
-                    if !model.search.isEmpty {
-                        Button { model.search = "" } label: { Image(systemName: "xmark.circle.fill") }
-                            .buttonStyle(.plain).foregroundStyle(.secondary)
-                            .accessibilityLabel("Clear traffic filter")
-                    }
-                    Button { showSearchHelp.toggle() } label: { Image(systemName: "questionmark.circle") }
-                        .buttonStyle(.plain)
-                        .accessibilityLabel("Traffic search help")
-                        .popover(isPresented: $showSearchHelp) {
-                            VStack(alignment: .leading, spacing: 8) {
-                                Text("Search traffic").font(.headline)
-                                Text("Combine text with filters, for example:")
-                                Text("host:api.test method:GET status:400-499").monospaced()
-                                Text("Use host, path, method, status, type or state. Filters use AND. Prefix - to exclude; quote values containing spaces.")
-                            }.padding().frame(width: 360)
-                        }
-                }.padding(.horizontal, 14).padding(.vertical, 10)
-                TrafficFilterControls(model: model)
-                Divider()
-                WorkspaceSplit(vertical: model.inspectorOnRight, autosaveName: "Reqnivo.Workspace",
+                WorkspaceSplit(vertical: model.inspectorOnRight, autosaveName: autosavePrefix + ".Workspace",
                                firstMinimum: model.inspectorOnRight ? 320 : 180,
                                secondMinimum: model.inspectorOnRight ? 380 : 260,
                                secondCollapsed: model.selectedID == nil || !inspectorVisible) {
                     TrafficTable(rows: model.rows, selectedID: $model.selectedID,
-                                 selectedIDs: model.selectedIDs, pinnedIDs: model.pinnedIDs,
+                                 pinnedIDs: model.pinnedIDs,
                                  filterRevision: model.filterRevision, columnResetRevision: columnResetRevision,
                                  onSelection: model.selectTraffic, onSortChanged: model.updateTrafficSort,
                                  onPin: model.setPinned,
                                  onFilter: { _ = model.addFilter(field: $0, value: $1, excluded: $2) },
                                  canEditFilters: model.queryError == nil, onMapLocal: model.openMapLocal,
                                  onBreakpoint: model.openBreakpointRules,
-                                 onReloaded: model.markTableReloaded)
+                                 onReloaded: model.markTableReloaded, autosaveName: autosavePrefix + ".TrafficTable")
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                         .overlay {
                             if model.rows.isEmpty {
-                                ContentUnavailableView(model.retainedCount > 0 ? "No matching traffic" : (model.running ? "Waiting for requests" : "Your traffic, in view"),
-                                                       systemImage: "network",
-                                                       description: Text(model.retainedCount > 0 ? "Change the filter or select All Traffic." : (model.running ? "Route a browser or test device through port \(model.proxyPort)." : "Start capture, then tick Capture Mac Traffic or configure a client.")))
-                                    .allowsHitTesting(false)
+                                ContentUnavailableView {
+                                    Label(model.retainedCount > 0 ? "No matching traffic" : (model.running ? "Waiting for requests" : "Your traffic, in view"),
+                                          systemImage: "network")
+                                } description: {
+                                    Text(model.retainedCount > 0 ? "Change the filter or select All Traffic." :
+                                         (model.running ? "Route a browser or test device through port \(model.proxyPort)." :
+                                          "Start capture, then enable Capture Mac Traffic or configure a client."))
+                                } actions: {
+                                    if model.retainedCount > 0 {
+                                        if !model.search.isEmpty { Button("Clear Search") { model.search = "" } }
+                                        if model.sidebarSelection != .all { Button("All Traffic") { model.sidebarSelection = .all } }
+                                    } else if model.running {
+                                        Button("Set Up Capture…") { model.showSetup = true }
+                                    } else {
+                                        CaptureControl(model: model)
+                                    }
+                                }
                             }
                         }
                 } second: {
@@ -278,14 +254,17 @@ struct ContentView: View {
                                                  onSettings: { model.showHTTPSDecryption = true })
                         } else {
                             InspectorView(detail: model.detail, loading: model.loadingDetail, messagesStacked: model.messagesStacked,
-                                          onRendered: { model.markSelectionRendered(flowID: $0) })
+                                          onRendered: { model.markSelectionRendered(flowID: $0) },
+                                          autosaveName: autosavePrefix + ".Messages",
+                                          onSideBySide: { model.messagesStacked = false })
                         }
                     }.frame(maxWidth: .infinity, maxHeight: .infinity)
                 }
                 Divider()
                 HStack(spacing: 12) {
-                    Circle().fill(model.running ? .green : .secondary).frame(width: 7, height: 7)
-                    Text(model.status).lineLimit(1)
+                    Circle().fill(Color(nsColor: model.running ? WorkspaceStyle.success : WorkspaceStyle.textSecondary))
+                        .frame(width: 6, height: 6).accessibilityHidden(true)
+                    Text(model.status).lineLimit(1).help(model.status).layoutPriority(1)
                     Spacer()
                     Text("\(model.total.formatted()) captured")
                     Button { model.showMetrics = true } label: {
@@ -293,16 +272,13 @@ struct ContentView: View {
                     }.buttonStyle(.plain).help("UI + engine process tree; CPU is a decaying average sampled by ps")
                     Text((Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String)
                          .map { "v\($0)" } ?? "Development build")
-                }.font(.caption).foregroundStyle(.secondary).padding(.horizontal, 12).padding(.vertical, 8)
+                }.font(.system(size: 11)).foregroundStyle(Color(nsColor: WorkspaceStyle.textSecondary))
+                    .padding(.horizontal, 12).padding(.vertical, 8)
             }
+            .background(Color(nsColor: WorkspaceStyle.workspace))
         }
-        .frame(minWidth: 1050, minHeight: 700)
         .navigationTitle("Reqnivo")
-        .toolbar {
-            ToolbarItem(placement: .primaryAction) {
-                captureToolbar
-            }
-        }
+        .toolbar { workspaceToolbar }
         .sheet(isPresented: $model.showSetup) { SetupView(model: model) }
         .sheet(isPresented: $showLANDevices) { LANDevicesView(model: model) }
         .sheet(isPresented: $model.showHTTPSDecryption) { HTTPSDecryptionView(model: model) }
@@ -319,50 +295,114 @@ struct ContentView: View {
             if show { openWindow(id: "paused-traffic"); model.showPausedTraffic = false }
         }
         .sheet(isPresented: $model.showMetrics) { MetricsView(model: model) }
-        .alert("Reqnivo", isPresented: Binding(get: { model.error != nil }, set: { if !$0 { model.error = nil } })) {
-            Button("OK") { model.error = nil }
-        } message: { Text(model.error ?? "") }
     }
 }
 
-private struct ToolbarLabel: View {
-    let title: String
-    let systemImage: String
-
-    init(_ title: String, systemImage: String) {
-        self.title = title
-        self.systemImage = systemImage
-    }
+struct CaptureControl: View {
+    @ObservedObject var model: CaptureModel
 
     var body: some View {
-        VStack(spacing: 3) {
-            Image(systemName: systemImage)
-                .font(.system(size: 16, weight: .regular))
-                .frame(height: 18)
-            Text(title)
-                .font(.system(size: 10, weight: .medium))
-                .lineLimit(1)
-                .fixedSize()
+        Button(action: model.toggle) {
+            HStack(spacing: 8) {
+                ZStack {
+                    if model.busy {
+                        ProgressView().controlSize(.mini)
+                    } else {
+                        Image(systemName: model.running ? "stop.fill" : "play.fill")
+                            .font(.system(size: 11, weight: .semibold))
+                    }
+                }
+                .frame(width: 16, height: 16)
+                .accessibilityHidden(true)
+                Text(model.busy ? "Please wait…" : (model.running ? "Stop" : "Start Capture"))
+                    .font(.system(size: 13, weight: .semibold))
+                    .lineLimit(1)
+            }
+            .frame(width: 148, height: 32)
+            .contentShape(RoundedRectangle(cornerRadius: 8))
         }
-        .frame(width: 72, height: 42)
-        .contentShape(RoundedRectangle(cornerRadius: 8))
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel(title)
+        .buttonStyle(CaptureControlStyle(running: model.running))
+        .disabled(model.busy)
+        .help(model.busy ? "Please wait for the current operation to finish" :
+              (model.running ? "Stop capture" : "Start capture"))
+        .accessibilityLabel(model.running ? "Stop capture" : "Start capture")
+        .accessibilityValue(model.busy ? "Please wait" : (model.running ? "Capturing" : "Stopped"))
     }
 }
 
-private struct ToolbarButtonStyle: ButtonStyle {
+private struct CaptureControlStyle: ButtonStyle {
+    let running: Bool
     @Environment(\.isEnabled) private var isEnabled
-    @State private var isHovered = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var hovering = false
 
     func makeBody(configuration: Configuration) -> some View {
+        let foreground = Color(nsColor: running ? WorkspaceStyle.error : WorkspaceStyle.onAccent)
+        let boundary = Color(nsColor: running ? WorkspaceStyle.error : WorkspaceStyle.accent)
+        let shape = RoundedRectangle(cornerRadius: 8)
         configuration.label
-            .background {
-                RoundedRectangle(cornerRadius: 8)
-                    .fill(.primary.opacity(configuration.isPressed ? 0.12 : (isHovered && isEnabled ? 0.06 : 0)))
+            .foregroundStyle(foreground)
+            .background(Color(nsColor: running ? WorkspaceStyle.panel : WorkspaceStyle.accent), in: shape)
+            .overlay {
+                shape.fill(foreground.opacity(isEnabled ? (configuration.isPressed ? 0.14 : (hovering ? 0.08 : 0)) : 0))
+                    .allowsHitTesting(false)
             }
-            .opacity(isEnabled ? 1 : 0.4)
-            .onHover { isHovered = $0 }
+            .overlay {
+                shape.strokeBorder(boundary, lineWidth: 1)
+                    .allowsHitTesting(false)
+            }
+            .opacity(isEnabled ? 1 : 0.55)
+            .onHover { hovering = $0 }
+            .animation(reduceMotion ? nil : .easeOut(duration: 0.12), value: hovering && isEnabled)
+            .animation(reduceMotion ? nil : .easeOut(duration: 0.12), value: configuration.isPressed)
+    }
+}
+
+private struct CaptureStatusView: View {
+    @ObservedObject var model: CaptureModel
+    let onLANDevices: () -> Void
+    let onCertificate: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Label(model.captureStatusText, systemImage: model.running ? "record.circle" : "stop.circle")
+                .fontWeight(.medium)
+                .foregroundStyle(Color(nsColor: WorkspaceStyle.textPrimary))
+                .accessibilityLabel("Capture engine: \(model.captureStatusText)")
+            MacCaptureToggle(model: model)
+            Label(model.macProxyStatusText, systemImage: "desktopcomputer")
+                .foregroundStyle(Color(nsColor: model.recoveryNeeded ? WorkspaceStyle.error : WorkspaceStyle.textSecondary))
+                .accessibilityLabel("Mac system proxy: \(model.macProxyStatusText)")
+            if model.recoveryNeeded {
+                Button("Restore Mac Proxy", action: model.restoreProxy).disabled(model.busy)
+            }
+            Label(model.lanStatusText, systemImage: "wifi")
+                .accessibilityLabel("Network access: \(model.lanStatusText)")
+            if model.allowLAN {
+                Button("LAN Devices (\(model.lanDevices.filter { !$0.approved }.count) waiting)", action: onLANDevices)
+                    .accessibilityLabel("LAN Devices, \(model.lanDevices.filter { !$0.approved }.count) waiting for approval")
+            }
+            Divider()
+            Label(model.caTrustStatus == .notGenerated && model.running ? "Waiting for capture CA" : model.caStatusText,
+                  systemImage: model.caTrustStatus == .trusted ? "lock.shield" : "exclamationmark.shield")
+                .accessibilityLabel("CA certificate: \(model.caStatusText)")
+            if model.caTrustStatus == .notTrusted {
+                Button("Install Certificate…", systemImage: "checkmark.seal", action: onCertificate)
+                    .accessibilityLabel("Install certificate")
+            } else if model.caTrustStatus == .notGenerated && !model.running {
+                CaptureControl(model: model)
+            }
+            Button("Set Up Capture & HTTPS…") { model.showSetup = true }
+                .buttonStyle(.link)
+                .help("Trust is checked on this Mac only. Phones, emulators, and apps with their own trust stores require separate CA setup.")
+        }
+        .font(.system(size: 11))
+        .foregroundStyle(Color(nsColor: WorkspaceStyle.textSecondary))
+        .fixedSize(horizontal: false, vertical: true)
+        .tint(Color(nsColor: WorkspaceStyle.accent))
+        .padding(12)
+        // Minimum-size probes must not wrap status text at a near-zero width.
+        .frame(minWidth: 200, alignment: .leading)
     }
 }
 
@@ -371,6 +411,9 @@ struct InspectorView: View {
     let loading: Bool
     var messagesStacked = false
     var onRendered: (String) -> Void = { _ in }
+    var autosaveName = "Reqnivo.Messages"
+    var onSideBySide: () -> Void = {}
+    @State private var balanceRevision = 0
     @State private var requestSection = 1
     @State private var responseSection = 1
     @State private var requestFoldedBody: String?
@@ -386,27 +429,41 @@ struct InspectorView: View {
                     if let number = flowDetail.summary.number {
                         Text("#\(number)").font(.caption.monospaced()).foregroundStyle(.secondary).help(flowDetail.summary.id)
                     }
-                    Text(flowDetail.summary.method).font(.caption.bold()).foregroundStyle(.blue)
+                    Text(flowDetail.summary.method)
+                        .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                        .padding(.horizontal, 6).padding(.vertical, 3)
+                        .background(Color(nsColor: WorkspaceStyle.workspace), in: RoundedRectangle(cornerRadius: 4))
                     Text(flowDetail.summary.url).font(.caption.monospaced()).lineLimit(1).textSelection(.enabled)
+                        .help(flowDetail.summary.url).layoutPriority(-1)
                     Spacer()
                     ZStack {
                         if loading { ProgressView().controlSize(.mini) }
                     }.frame(width: 12, height: 12).help("Loading selected request…")
                     if let status = flowDetail.summary.status {
                         Text(String(status)).font(.caption.bold().monospacedDigit())
-                            .foregroundStyle(status >= 400 ? .red : .green)
+                            .foregroundStyle(Color(nsColor: status >= 400 ? WorkspaceStyle.error : WorkspaceStyle.success))
                     }
-                }.padding(10)
+                    Button("Split Evenly") {
+                        onSideBySide()
+                        balanceRevision += 1
+                    }
+                    .controlSize(.small)
+                    .help("Arrange Request and Response side by side with equal widths")
+                    .accessibilityLabel("Equal request and response widths")
+                }.padding(.horizontal, 12).padding(.vertical, 8)
+                    .foregroundStyle(Color(nsColor: WorkspaceStyle.textPrimary))
+                    .background(Color(nsColor: WorkspaceStyle.panel))
                 Divider()
-                WorkspaceSplit(vertical: !messagesStacked, autosaveName: "Reqnivo.Messages",
+                WorkspaceSplit(vertical: !messagesStacked, autosaveName: autosaveName,
                                firstMinimum: messagesStacked ? 100 : 170,
-                               secondMinimum: messagesStacked ? 100 : 170) {
-                    MessagePane(title: "Request", accent: .blue, message: flowDetail.request,
+                               secondMinimum: messagesStacked ? 100 : 170,
+                               balanceRevision: balanceRevision) {
+                    MessagePane(title: "Request", message: flowDetail.request,
                                 presentation: content.request, loading: loading, placeholder: "No request body",
                                 onRendered: { onRendered(flowDetail.summary.id) },
                                 section: $requestSection, foldedBody: $requestFoldedBody, collapsedRegions: $requestCollapsed)
                 } second: {
-                    MessagePane(title: "Response", accent: .green, message: flowDetail.response,
+                    MessagePane(title: "Response", message: flowDetail.response,
                                 presentation: content.response, loading: loading,
                                 placeholder: flowDetail.summary.error ?? "Waiting for response…",
                                 onRendered: { onRendered(flowDetail.summary.id) },
@@ -425,7 +482,6 @@ struct InspectorView: View {
 
 private struct MessagePane: View {
     let title: String
-    let accent: Color
     let message: FlowMessage?
     let presentation: MessagePresentation?
     let loading: Bool
@@ -439,8 +495,7 @@ private struct MessagePane: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack {
-                Circle().fill(accent).frame(width: 7, height: 7)
-                Text(title).font(.headline)
+                Text(title).font(.system(size: 13, weight: .semibold))
                 Spacer()
                 Button {
                     guard let presentation else { return }
@@ -448,19 +503,24 @@ private struct MessagePane: View {
                     NSPasteboard.general.setString(presentation.copyText, forType: .string)
                     copied = true
                 } label: {
-                    Label(copied ? "Copied" : copyLabel, systemImage: copied ? "checkmark" : "doc.on.doc")
+                    ViewThatFits(in: .horizontal) {
+                        Label(copied ? "Copied" : copyLabel, systemImage: copied ? "checkmark" : "doc.on.doc").fixedSize()
+                        Image(systemName: copied ? "checkmark" : "doc.on.doc")
+                    }
                 }
-                .font(.caption)
+                .controlSize(.small)
                 .disabled(loading || presentation?.copyText.isEmpty != false || message?.streamed == true)
-                .help("Copy the displayed body as plain text")
+                .help(copied ? "Copied" : "\(copyLabel) as plain text")
                 .accessibilityLabel("Copy \(title.lowercased()) body")
-            }.padding(.horizontal, 12).padding(.top, 10).padding(.bottom, 8)
+                .accessibilityValue(copied ? "Copied" : "")
+            }.foregroundStyle(Color(nsColor: WorkspaceStyle.textPrimary))
+                .padding(.horizontal, 12).padding(.vertical, 8)
             Picker("\(title) content", selection: $section) {
                 Text("Headers").tag(0)
                 Text(presentation?.isJSON == true ? "JSON" : "Body").tag(1)
             }
             .pickerStyle(.segmented).labelsHidden()
-            .padding(.horizontal, 12).padding(.bottom, 10)
+            .padding(.horizontal, 12).padding(.bottom, 8)
             Divider()
             if let message, let presentation {
                 if section == 1 && (message.truncated || message.streamed) {
@@ -477,6 +537,7 @@ private struct MessagePane: View {
                                 scrollsHorizontally: true,
                                 accessibilityLabel: "\(title) \(section == 0 ? "headers" : "body")",
                                 folds: section == 1 ? presentation.folds : [],
+                                showsLineNumbers: section == 1,
                                 collapsed: Binding(
                                     get: { foldedBody == presentation.copyText ? collapsedRegions : [] },
                                     set: { foldedBody = presentation.copyText; collapsedRegions = $0 }
@@ -490,7 +551,7 @@ private struct MessagePane: View {
             }
         }
         .frame(minWidth: 160, maxWidth: .infinity, maxHeight: .infinity)
-        .background(Color(nsColor: .textBackgroundColor))
+        .background(Color(nsColor: WorkspaceStyle.panel))
         .onChange(of: message) { previous, next in
             copied = false
             if previous?.body != next?.body {
@@ -512,6 +573,7 @@ struct PreviewText: NSViewRepresentable {
     var scrollsHorizontally = false
     var accessibilityLabel: String? = nil
     var folds: [JSONFoldRegion] = []
+    var showsLineNumbers = false
     var collapsed: Binding<Set<Int>>? = nil
     var onRendered: (() -> Void)? = nil
 
@@ -541,7 +603,10 @@ struct PreviewText: NSViewRepresentable {
         scroll.contentView.postsBoundsChangedNotifications = true
         context.coordinator.observer = NotificationCenter.default.addObserver(
             forName: NSView.boundsDidChangeNotification, object: scroll.contentView, queue: .main
-        ) { [weak gutter] _ in gutter?.needsLayout = true }
+        ) { [weak gutter] _ in
+            gutter?.needsLayout = true
+            gutter?.needsDisplay = true
+        }
         return container
     }
 
@@ -596,12 +661,23 @@ struct PreviewText: NSViewRepresentable {
             let position = scroll.contentView.bounds.origin
             textView.textStorage?.setAttributedString(display.content)
             textView.sizeToFit()
-            container.setFoldControls(display.controls)
-            if changedDocument { textView.scrollToBeginningOfDocument(nil) }
-            else {
-                scroll.contentView.scroll(to: position)
-                scroll.reflectScrolledClipView(scroll.contentView)
+            if parent.showsLineNumbers {
+                let starts = SyntaxTextEditor.lineStarts(in: display.content.string)
+                var hidden = 0
+                var next = 0
+                let numbers = starts.enumerated().map { index, start in
+                    while next < display.hiddenLines.count, display.hiddenLines[next].location < start {
+                        hidden += display.hiddenLines[next].lines
+                        next += 1
+                    }
+                    return index + hidden + 1
+                }
+                container.setFoldControls(display.controls, lineStarts: starts, lineNumbers: numbers)
+            } else {
+                container.setFoldControls(display.controls)
             }
+            scroll.contentView.scroll(to: changedDocument ? .zero : position)
+            scroll.reflectScrolledClipView(scroll.contentView)
             gutter?.needsLayout = true
             // Force glyph generation/layout so selection-to-render includes real text layout cost.
             if let manager = textView.layoutManager, let textContainer = textView.textContainer {

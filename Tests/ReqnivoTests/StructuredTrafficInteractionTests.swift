@@ -17,6 +17,19 @@ final class StructuredTrafficInteractionTests: XCTestCase {
         })
     }
 
+    func testSelectingAnotherRequestReplacesTheHiddenSelection() {
+        let model = model()
+        model.applyTrafficEvents([FlowEvent(sequence: 1, flow: flow(1)), FlowEvent(sequence: 2, flow: flow(2, host: "other.test"))])
+        model.selectTraffic(["1"], primary: "1")
+        model.search = "host:other.test"
+        model.applySearch()
+        XCTAssertEqual(model.hiddenSelectionCount, 1)
+        model.selectTraffic(["1", "2"], primary: "2")
+        XCTAssertEqual(model.selectedID, "2")
+        XCTAssertEqual(model.selectedIDs, ["2"])
+        XCTAssertEqual(model.hiddenSelectionCount, 0)
+    }
+
     func testInvalidQueryKeepsEffectivePredicateForNewEventsAndRecovers() {
         let model = model()
         model.applyTrafficEvents([FlowEvent(sequence: 1, flow: flow(1)), FlowEvent(sequence: 2, flow: flow(2, host: "other.test"))])
@@ -44,7 +57,7 @@ final class StructuredTrafficInteractionTests: XCTestCase {
         model.search = "host:api.test"
         model.applySearch()
         XCTAssertEqual(model.selectedID, "2")
-        XCTAssertEqual(model.selectedIDs, ["1", "2"])
+        XCTAssertEqual(model.selectedIDs, ["2"])
         XCTAssertEqual(model.hiddenSelectionCount, 1)
         model.search = ""
         model.applySearch()
@@ -71,35 +84,35 @@ final class StructuredTrafficInteractionTests: XCTestCase {
         XCTAssertEqual(model.search, "method:GET")
     }
 
-    func testNativeSelectionChangeRetainsHiddenIDsAndPrimaryTracksNewSelection() {
+    func testNativeSelectionReplacesPreviousRequestAndCanClearSelection() {
         let table = NSTableView()
-        table.allowsMultipleSelection = true
+        table.allowsMultipleSelection = false
         var received: Set<String> = []
         var primary: String?
-        let parent = TrafficTable(rows: [], selectedID: .constant("1"), selectedIDs: ["1", "hidden"],
+        let parent = TrafficTable(rows: [], selectedID: .constant("hidden"),
                                   onSelection: { received = $0; primary = $1 })
         let coordinator = TrafficTable.Coordinator(parent: parent)
         coordinator.table = table
         table.dataSource = coordinator
         coordinator.rows = [flow(1), flow(2), flow(3)]
         table.reloadData()
-        table.selectRowIndexes(IndexSet([0, 1]), byExtendingSelection: false)
+        table.selectRowIndexes(IndexSet(integer: 1), byExtendingSelection: false)
         coordinator.tableViewSelectionDidChange(Notification(name: NSTableView.selectionDidChangeNotification))
-        XCTAssertEqual(received, ["1", "2", "hidden"])
+        XCTAssertEqual(received, ["2"])
         XCTAssertEqual(primary, "2")
         table.deselectAll(nil)
         coordinator.tableViewSelectionDidChange(Notification(name: NSTableView.selectionDidChangeNotification))
-        XCTAssertEqual(received, ["hidden"])
-        XCTAssertNil(primary, "The model chooses a hidden primary using retained capture order")
+        XCTAssertTrue(received.isEmpty)
+        XCTAssertNil(primary)
     }
 
-    func testPrimaryEvictionChoosesOnlyRemainingSelection() {
+    func testSingleSelectionClearsOnEvictionAndFallbackRespectsSort() {
         let model = model()
         model.applyTrafficEvents((1...10_000).map { FlowEvent(sequence: $0, flow: flow($0)) })
         model.selectTraffic(["1", "10", "200"], primary: "1")
         model.applyTrafficEvents([FlowEvent(sequence: 10_001, flow: flow(10_001))])
-        XCTAssertEqual(model.selectedID, "200", "Fallback follows the displayed descending sort")
-        XCTAssertEqual(model.selectedIDs, ["10", "200"])
+        XCTAssertNil(model.selectedID)
+        XCTAssertTrue(model.selectedIDs.isEmpty)
         model.setPinned(["10"], pinned: true)
         model.selectTraffic(["10", "200"], primary: nil)
         XCTAssertEqual(model.selectedID, "10", "Pinned group comes first")
@@ -153,7 +166,7 @@ final class StructuredTrafficInteractionTests: XCTestCase {
         XCTAssertEqual(model.hostPaths["api.test"]?.count, 2)
     }
 
-    func testFilterControlsHostInLightDarkAndNarrowWorkspaceWithoutLosingPrimary() {
+    func testFilterControlsHostInLightDarkAndNarrowWorkspaceWithoutLosingPrimary() async throws {
         let model = model()
         model.applyTrafficEvents([FlowEvent(sequence: 1, flow: flow(1)), FlowEvent(sequence: 2, flow: flow(2))])
         model.selectTraffic(["1", "2"], primary: "2")
@@ -166,12 +179,24 @@ final class StructuredTrafficInteractionTests: XCTestCase {
         defer { window.contentViewController = nil }
         for appearance in [NSAppearance.Name.aqua, .darkAqua] {
             host.view.appearance = NSAppearance(named: appearance)
-            for width in [800.0, 1200.0] {
+            for width in [690.0, 800.0, 1200.0] {
                 window.setContentSize(NSSize(width: width, height: 240))
-                host.view.layoutSubtreeIfNeeded()
+                for _ in 0..<5 {
+                    host.view.layoutSubtreeIfNeeded()
+                    try await Task.sleep(for: .milliseconds(10))
+                }
+                func fields(_ view: NSView) -> [NSTextField] {
+                    view.subviews.flatMap { child in (child as? NSTextField).map { [$0] } ?? fields(child) }
+                }
+                let search = try XCTUnwrap(fields(host.view).first { $0.isEditable })
+                let bounds = search.convert(search.bounds, to: host.view)
+                XCTAssertGreaterThanOrEqual(bounds.width, 120, "Utility controls must not squeeze out search")
+                XCTAssertGreaterThanOrEqual(bounds.minX, 0)
+                XCTAssertLessThanOrEqual(bounds.maxX, width)
+                XCTAssertEqual(search.stringValue, model.search)
                 XCTAssertEqual(host.view.frame.width, width, accuracy: 1)
                 XCTAssertEqual(model.selectedID, "2")
-                XCTAssertEqual(model.selectedIDs, ["1", "2"])
+                XCTAssertEqual(model.selectedIDs, ["2"])
             }
         }
     }
@@ -181,7 +206,7 @@ final class StructuredTrafficInteractionTests: XCTestCase {
         let table = NSTableView()
         table.sortDescriptors = [NSSortDescriptor(key: "id", ascending: false)]
         let parent = TrafficTable(rows: [], selectedID: Binding(get: { primary }, set: { primary = $0 }),
-                                  selectedIDs: ["2"], pinnedIDs: ["1"])
+                                  pinnedIDs: ["1"])
         let coordinator = TrafficTable.Coordinator(parent: parent)
         coordinator.rows = [flow(2), flow(1)]
         coordinator.sourceRows = [flow(1), flow(2), flow(3)]
@@ -194,22 +219,22 @@ final class StructuredTrafficInteractionTests: XCTestCase {
         XCTAssertEqual(coordinator.rows.map(\.id), ["1", "2", "3"])
     }
 
-    func testMultiSelectionSurvivesSortAndFilterRestore() {
+    func testSingleSelectionSurvivesSortAndFilterRestore() {
         let table = NSTableView()
-        let parent = TrafficTable(rows: [], selectedID: .constant("2"), selectedIDs: ["1", "2"])
+        let parent = TrafficTable(rows: [], selectedID: .constant("2"))
         let coordinator = TrafficTable.Coordinator(parent: parent)
         table.dataSource = coordinator
         coordinator.sourceRows = [flow(1), flow(2), flow(3)]
-        table.allowsMultipleSelection = true
-        coordinator.sortAndReload(table)
-        XCTAssertEqual(table.selectedRowIndexes, IndexSet([1, 2]))
-        coordinator.sourceRows = [flow(1), flow(3)]
+        table.allowsMultipleSelection = false
         coordinator.sortAndReload(table)
         XCTAssertEqual(table.selectedRowIndexes, IndexSet(integer: 1))
+        coordinator.sourceRows = [flow(1), flow(3)]
+        coordinator.sortAndReload(table)
+        XCTAssertTrue(table.selectedRowIndexes.isEmpty)
         coordinator.sourceRows = [flow(1), flow(2), flow(3)]
         table.sortDescriptors = [NSSortDescriptor(key: "id", ascending: true)]
         coordinator.sortAndReload(table)
-        XCTAssertEqual(table.selectedRowIndexes, IndexSet([0, 1]))
+        XCTAssertEqual(table.selectedRowIndexes, IndexSet(integer: 1))
     }
 
     func testContextPinAndFilterUseSnapshotsAndDoNotMovePrimary() {
@@ -219,17 +244,17 @@ final class StructuredTrafficInteractionTests: XCTestCase {
                                   onFilter: { _, value, _ in filtered = value })
         let coordinator = TrafficTable.Coordinator(parent: parent)
         let item = NSMenuItem()
-        item.representedObject = TrafficTable.Coordinator.PinAction(ids: ["2", "3"], pinned: true)
+        item.representedObject = TrafficTable.Coordinator.PinAction(ids: ["2"], pinned: true)
         coordinator.rows = [flow(9)]
         coordinator.pinTraffic(item)
-        XCTAssertEqual(pinned, ["2", "3"])
+        XCTAssertEqual(pinned, ["2"])
         item.representedObject = TrafficTable.Coordinator.FilterAction(field: .host, value: "snapshot.test", excluded: true)
         coordinator.filterTraffic(item)
         XCTAssertEqual(filtered, "snapshot.test")
         XCTAssertEqual(coordinator.parent.selectedID, "1")
     }
 
-    func testQueuedFollowCannotOverrideFilterPinSortOrMultipleSelection() async {
+    func testQueuedFollowCannotOverrideFilterPinSortOrNewSelection() async {
         for mutation in 0..<4 {
             var selected: String? = "2"
             let table = NSTableView()
@@ -243,10 +268,10 @@ final class StructuredTrafficInteractionTests: XCTestCase {
             case 0: coordinator.parent.filterRevision += 1
             case 1: coordinator.parent.pinnedIDs = ["2"]
             case 2: table.sortDescriptors = [NSSortDescriptor(key: "id", ascending: true)]
-            default: coordinator.parent.selectedIDs = ["1", "2"]
+            default: selected = "1"
             }
             await drain()
-            XCTAssertEqual(selected, "2")
+            XCTAssertEqual(selected, mutation == 3 ? "1" : "2")
         }
     }
 

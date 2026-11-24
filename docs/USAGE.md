@@ -105,9 +105,11 @@ IP `192.168.1.25` ในคู่มือเป็นตัวอย่าง �
 | **Map Local** | เปิดหน้าต่างจัดการกฎ response จำลอง |
 | **Breakpoints** | เปิดกฎหยุด request/response; ตัวเลขบนปุ่มบอกจำนวนรายการที่กำลังหยุดรอ |
 | **HTTPS** | จัดการโดเมนที่บันทึกไว้สำหรับ decryption |
-| **Settings** | เปิด **Capture Settings** เช่น port, LAN และ network service |
-| **Certificate** | เปิด **Install Certificate** สำหรับดู public CA และติดตั้งบนอุปกรณ์ |
+| **Settings** | ตั้งค่า port, LAN และ network service |
+| **Certificate** | เปิดตัวช่วยดู public CA และติดตั้งบนอุปกรณ์ |
 | **Layout** | จัดตำแหน่ง Inspector และ Request/Response รวมถึง reset คอลัมน์ |
+
+ปุ่ม **Start Capture** ใช้สีหลักของธีมพร้อมไอคอนเริ่ม ส่วน **Stop** ใช้พื้นอ่อนพร้อมขอบและไอคอนหยุดสีแดงหม่น ระหว่างทำงานปุ่มจะแสดง **Please wait…** พร้อมตัวบอกความคืบหน้าและกดซ้ำไม่ได้ ขนาดปุ่มคงเดิมเมื่อเปลี่ยนสถานะ และใช้ **⌘R** เพื่อเริ่มหรือหยุด capture ได้
 
 ### 3.2 Sidebar ด้านซ้าย
 
@@ -117,6 +119,8 @@ IP `192.168.1.25` ในคู่มือเป็นตัวอย่าง �
 - ส่วนล่างแสดงสถานะ capture, LAN, Mac proxy และ CA ของ Mac แต่ละสถานะตรวจคนละเรื่อง Capture ทำงานไม่ได้แปลว่า client ตั้ง proxy และ trust CA ครบแล้ว
 - เมื่อเปิด LAN จะมีปุ่ม **LAN Devices (N waiting)** สำหรับดู IP/port และอนุมัติอุปกรณ์ โดย N คือจำนวน IP ที่ยังไม่ได้อนุมัติ ดู [วิธีจัดการ LAN Devices](#lan-devices) ถ้าเปลี่ยน Wi-Fi ให้ตรวจ IP ใหม่
 - **Capture Mac Traffic**: เปิดให้โปรแกรมที่ใช้ system proxy ของ network service ที่เลือกส่งผ่านแอป
+- **Set Up Capture & HTTPS…** เปิด Capture Settings โดยตรง เมื่อ CA มีอยู่แต่ยังไม่ trusted บน Mac จะมี **Install Certificate…** ให้เปิดตัวช่วยได้ทันที หากยังไม่มี CA ให้ Start Capture ก่อน สถานะ trusted บน Mac ไม่ได้ยืนยันว่าโทรศัพท์ trust แล้ว
+- หากต้องคืนค่า proxy จะมี **Restore Mac Proxy** แสดงในส่วนสถานะ ไม่ต้องเข้าเมนูเพื่อค้นหา
 
 ### 3.3 ตาราง traffic และแผงรายละเอียด
 
@@ -124,9 +128,11 @@ IP `192.168.1.25` ในคู่มือเป็นตัวอย่าง �
 
 ID เป็นเลขรายการในรอบ capture ไม่เปลี่ยนตาม filter หรือ sort ชี้ที่ ID เพื่อดู flow UUID ค่าเริ่มต้นเรียง ID มากไปน้อย ให้รายการใหม่อยู่บนสุด
 
-**Show Inspector / Hide Inspector** ใช้แสดงหรือซ่อนรายละเอียด ต้องเลือก request ก่อน ส่วนจำนวน `N of M retained` หมายถึงแสดง N รายการจาก M รายการที่ยังเก็บอยู่ จำนวน captured ด้านล่างอาจมากกว่า เพราะข้อมูลเก่าถูกนำออกตามขีดจำกัดแล้ว
+ปุ่มไอคอน **Show Inspector / Hide Inspector** ข้างจำนวน retained ใช้แสดงหรือซ่อนรายละเอียด ชี้ที่ปุ่มเพื่อดูชื่อและต้องเลือก request ก่อน ส่วนจำนวน `N of M retained` หมายถึงแสดง N รายการจาก M รายการที่ยังเก็บอยู่ จำนวน captured ด้านล่างอาจมากกว่า เพราะข้อมูลเก่าถูกนำออกตามขีดจำกัดแล้ว
 
-ใน **Layout** เปิด **Inspector on Right** เพื่อย้ายรายละเอียดไปขวา ปิดเพื่อวางด้านล่าง และใช้ **Stack Request and Response** เพื่อวาง Request/Response บนล่าง สามารถลาก divider ปรับพื้นที่ได้
+ใน **Layout** เปิด **Inspector on Right** เพื่อย้ายรายละเอียดไปขวา ปิดเพื่อวางด้านล่าง และใช้ **Stack Request and Response** เพื่อวาง Request/Response บนล่าง สามารถลาก divider ปรับพื้นที่ได้ แต่การลากจะไม่ยุบ Inspector อัตโนมัติ ใช้ปุ่ม **Hide Inspector / Show Inspector** เพื่อซ่อนหรือเปิดแทน
+
+กด **Split Evenly** ในหัว Inspector เพื่อคืน Request/Response เป็นซ้าย–ขวาที่กว้างเท่ากัน โดยยังคง request และเนื้อหาที่กำลังอ่านอยู่ จากนั้นลาก divider ปรับพื้นที่ต่อได้ตามปกติ
 
 <a id="lan-devices"></a>
 
@@ -367,12 +373,16 @@ curl --noproxy '' --proxy http://127.0.0.1:9090 \
 
 Request และ Response เลือกแท็บแยกกันได้ เช่นดู Request Headers พร้อม Response JSON
 
+เมื่อเปิด Headers หรือเปลี่ยนเนื้อหา preview จะเริ่มที่มุมซ้ายบน ข้อความยาวยังเลื่อนอ่านแนวนอนได้ และการอัปเดตที่เนื้อหาไม่เปลี่ยนจะคงตำแหน่งที่เลื่อนไว้
+
 ### 9.4 JSON folding และการคัดลอก
 
 - JSON จัดรูปแบบและแยกสีอัตโนมัติ กดลูกศรข้างบรรทัด `{` หรือ `[` เพื่อพับ/ขยาย object หรือ array
 - การพับเป็นการซ่อนบางส่วนบนหน้าจอ ไม่ได้ลบข้อมูล
 - **Copy JSON** คัดลอกข้อความที่มีใน preview ทั้งก้อน แม้บางส่วนพับอยู่ แต่ถ้า preview ถูกตัด จะไม่ทำให้ได้ body จริงส่วนที่ไม่ได้ capture กลับมา
+- เมื่อแผงแคบ ปุ่ม Copy ย่อเป็นไอคอน ชี้ที่ปุ่มเพื่อดู **Copy JSON / Copy Body / Copy Preview** และยังคัดลอก body ตามเดิม ไม่เปลี่ยนเป็น headers เมื่อสลับแท็บ
 - ถ้าไม่ใช่ JSON แท็บจะแสดงเป็น Body ตามเนื้อหา
+- แท็บ JSON/Body ของ Request และ Response แสดงเลขบรรทัดด้านซ้าย และอัปเดตให้ตรงกับข้อความที่มองเห็นขณะเลื่อน
 
 ### 9.5 สถานะที่ควรรู้
 
@@ -443,20 +453,24 @@ path:"/search?q=hello world"
 ### 10.4 บันทึกตัวกรองไว้ใช้ซ้ำ
 
 1. เลือก sidebar scope และพิมพ์ query ให้ได้ผลตามต้องการ
-2. กด **Save…** ตั้งชื่อ เช่น `Product API errors` แล้ว Save
+2. กด **Saved Filters → Save Current Filter…** ตั้งชื่อ เช่น `Product API errors` แล้ว Save
 3. ครั้งต่อไปเปิด **Saved Filters → ชื่อตัวกรอง → Apply**
 4. ใช้ **Rename… / Delete** ในเมนูเพื่อจัดการ
-5. หากปรับ query/scope ของ filter ที่ใช้อยู่ จะมี `(modified)` กด **Update** เพื่อแทนค่าที่บันทึกไว้ หรือ Save เป็นชื่อใหม่
+5. หากปรับ query/scope ของ filter ที่ใช้อยู่ จะมี **Modified** ใต้ช่องค้นหา กด **Saved Filters → Update ชื่อตัวกรอง** เพื่อแทนค่าที่บันทึกไว้ หรือ **Save Current Filter…** เพื่อบันทึกเป็นชื่อใหม่
 
 Saved filter เก็บชื่อ, query และ sidebar scope ข้ามการเปิดแอป ไม่ได้เก็บ traffic, sort หรือ pin จึงไม่ใช่การบันทึก session
 
-### 10.5 เลือกหลายแถวและปักหมุด
+### 10.5 เลือก request และปักหมุด
 
-ใช้ **⌘-click** เลือกหลายแถวแยกกัน หรือ **Shift-click** เลือกเป็นช่วง Inspector แสดงรายละเอียด primary request ไม่ได้รวม body ทุกแถว ระบบยึด flow ID จึงไม่เปลี่ยนเป้าหมายตาม sort
+ตารางเลือกได้ครั้งละ **หนึ่ง request** คลิกแถวเพื่อดูรายละเอียดใน Inspector การเลือกแถวใหม่แทนที่รายการเดิม รวมถึงรายการที่ถูก filter ซ่อนไว้ ระบบยึด flow ID จึงไม่เปลี่ยนเป้าหมายตาม sort
 
-ถ้า filter ซ่อนแถวที่เลือก Inspector อาจยังแสดงรายการเดิม พร้อมข้อความว่า hidden by filters/Inspecting hidden request กด **Deselect All** เพื่อล้าง selection ทั้งที่เห็นและที่ซ่อน
+ขณะกดเลือกแถว ตารางรอจนปล่อยเมาส์ก่อนนำการรีเฟรชล่าสุดมาใช้ เพื่อไม่ให้การอัปเดต traffic คืน selection ไปยังแถวเดิมระหว่างคลิก
 
-คลิกขวา → **Pin Selected / Unpin Selected** เพื่อให้กลุ่มที่ปักหมุดอยู่ก่อนกลุ่มอื่น ภายในกลุ่มยังเรียงตาม sort ปัจจุบัน แถว pin มี `★` แต่ pin ไม่ข้าม filter หรือขีดจำกัด retention และไม่เก็บข้ามการเปิดแอป
+คลิกพื้นที่ว่างใต้แถว traffic จะไม่ล้างรายการที่เลือกหรือปิด Inspector
+
+ถ้า filter ซ่อนแถวที่เลือก Inspector ยังแสดงรายการเดิม พร้อมข้อความ **Inspecting a request hidden by filters** เลือกแถวอื่นหรือคืน filter เพื่อให้แถวเดิมปรากฏ
+
+คลิกขวาที่ request → **Pin Request / Unpin Request** เพื่อให้รายการที่ปักหมุดอยู่ก่อนรายการอื่น ปักหมุดได้หลาย request ทีละรายการ ภายในกลุ่มยังเรียงตาม sort ปัจจุบัน แถว pin มี `★` แต่ pin ไม่ข้าม filter หรือขีดจำกัด retention และไม่เก็บข้ามการเปิดแอป
 
 Pin domain ใน sidebar เป็นคนละอย่างกับ pin request: domain pin จำข้ามการเปิดแอป ส่วน request pin เป็นของรอบใช้งานนั้น Clear หรือเริ่ม capture ใหม่ล้าง request pin/selection
 
@@ -632,7 +646,7 @@ chunked JSON ที่ไม่บีบอัดสามารถรอ body �
 
 ## 14. Capture Settings และ CA ของเซิร์ฟเวอร์
 
-เปิดด้วยปุ่ม **Settings** หรือเมนูแอป **Capture Settings…** และ **⌘,**
+เปิดด้วย **Settings** หรือเมนูแอป **Capture Settings…** และ **⌘,**
 
 | ตัวเลือก | ความหมาย / เวลาแก้ |
 | --- | --- |
@@ -652,7 +666,7 @@ chunked JSON ที่ไม่บีบอัดสามารถรอ body �
 
 ถ้า API ภายในขึ้น `self-signed certificate in certificate chain` ให้ขอ PEM CA/bundle ของ server จากทีมที่ดูแล แล้วทำดังนี้:
 
-1. Stop capture และเปิด Settings
+1. Stop capture และเปิด **Settings**
 2. ปิด **Skip server certificate verification (debug only)** หากเปิดอยู่
 3. กด **Choose CA File…** หรือ Replace เพื่อเลือก PEM bundle
 4. Start capture ใหม่ แล้วเรียก API ตรวจผล
@@ -722,7 +736,7 @@ Map Local ต้องรอบันทึกสำเร็จและเร�
 
 ### 15.10 Start ไม่ได้เพราะ port ถูกใช้
 
-Stop แล้วเปิด Settings เปลี่ยน Proxy/Control port ให้เป็น port ว่างและต่างกัน เช่น 9190/9191 จากนั้น Start ใหม่และแก้ proxy port ที่ client ทุกเครื่องตาม ไม่ต้องนำ Control port ไปใส่ที่ client
+Stop แล้วเปิด **Settings** เปลี่ยน Proxy/Control port ให้เป็น port ว่างและต่างกัน เช่น 9190/9191 จากนั้น Start ใหม่และแก้ proxy port ที่ client ทุกเครื่องตาม ไม่ต้องนำ Control port ไปใส่ที่ client
 
 ### 15.11 ปุ่มตั้ง port/LAN/CA เป็นสีเทา
 
@@ -734,11 +748,11 @@ Simulator ต้อง boot แล้ว; Android ต้องมี Platform-To
 
 ### 15.13 เปลี่ยน filter แล้วเหมือน Inspector แสดงผิดแถว
 
-ตรวจข้อความ hidden by filters/Inspecting hidden request ระบบรักษา request ที่เลือกไว้ แม้ตัวกรองซ่อนมัน กด Deselect All แล้วเลือกแถวที่ต้องการใหม่ หรือคืน filter เพื่อให้แถวเดิมปรากฏ
+ตรวจข้อความ **Inspecting a request hidden by filters** ระบบรักษา request ที่เลือกไว้ แม้ตัวกรองซ่อนมัน เลือกแถวที่ต้องการใหม่เพื่อแทนที่รายการเดิม หรือคืน filter เพื่อให้แถวเดิมปรากฏ
 
 ### 15.14 ปิด capture แล้วอินเทอร์เน็ตยังใช้ไม่ได้
 
-บนโทรศัพท์คืน Wi-Fi proxy เป็นค่าเดิม บน Mac เปิดแอปและดู Settings → Restore Mac Proxy ถ้ามี recovery หากยังคืนไม่ได้ให้ตรวจ **System Settings → Network → service ที่ใช้ → Details → Proxies** โดยเทียบค่าก่อนทดสอบ อย่าปิด proxy องค์กรที่มีอยู่เดิมโดยไม่ตรวจสอบ
+บนโทรศัพท์คืน Wi-Fi proxy เป็นค่าเดิม บน Mac เปิดแอปและใช้ **Restore Mac Proxy** ใน sidebar หรือ **Settings → Restore Mac Proxy** ถ้ามี recovery หากยังคืนไม่ได้ให้ตรวจ **System Settings → Network → service ที่ใช้ → Details → Proxies** โดยเทียบค่าก่อนทดสอบ อย่าปิด proxy องค์กรที่มีอยู่เดิมโดยไม่ตรวจสอบ
 
 แอปแก้เฉพาะ service ที่เลือก ไม่แก้ PAC/bypass list และไม่เขียนทับ endpoint ที่โปรแกรมอื่นเปลี่ยนระหว่าง capture หากคืนไม่ได้จะเก็บ recovery record ให้จัดการต่อ รายละเอียดดูบทถัดไป
 
@@ -749,7 +763,7 @@ Simulator ต้อง boot แล้ว; Android ต้องมี Platform-To
 1. ปิด checkbox ของ Map Local/Breakpoint ที่ไม่ต้องการให้ใช้ต่อ เพราะกฎจำข้ามการเปิดแอป
 2. จัดการรายการใน Paused Traffic ด้วย Continue หรือ Cancel ถ้าจะ Stop ทันทีให้ทราบว่ารายการที่ค้างจะถูกยกเลิก
 3. กด **Stop** แอปพยายามคืน Mac proxy ที่ตัวเองเปลี่ยน
-4. ตรวจสถานะ Mac proxy หากยังต้อง recovery ใช้ **Settings → Restore Mac Proxy** และตรวจผลก่อนลบข้อมูลแอป
+4. ตรวจสถานะ Mac proxy หากยังต้อง recovery ใช้ **Restore Mac Proxy** ใน sidebar หรือ **Settings → Restore Mac Proxy** และตรวจผลก่อนลบข้อมูลแอป
 5. บนโทรศัพท์/emulator คืน proxy เป็นค่าเดิม การ Stop บน Mac ไม่ได้แก้ Wi-Fi proxy บนมือถือให้
 6. ลบ CA/profile ออกจากอุปกรณ์หรือ trust store ที่ติดตั้งเมื่อไม่ใช้แล้ว บน Mac ตรวจผ่าน Keychain Access บนมือถือใช้ Settings
 7. หากต้องเก็บหลักฐานงาน ให้คัดลอกเฉพาะข้อมูลที่ได้รับอนุญาตและตรวจข้อมูลลับก่อน ปัจจุบันยังไม่มีการบันทึก/นำเข้า/ส่งออก capture session

@@ -1,5 +1,36 @@
 # Baseline
 
+## Premium workspace layout follow-up — 24 พฤศจิกายน 2026
+
+แก้ native minimum-size measurement ของ sidebar status และ filter diagnostics: ข้อความ multiline ที่ใช้ `fixedSize` ถูกวัดด้วยความกว้างใกล้ศูนย์ ทำให้ sidebar ส่ง fitting height 1,717pt และขยาย workspace เกิน viewport การกำหนด width floor ตาม sidebar 200pt และ traffic pane 320pt เดิมป้องกันการวัดนี้ โดยไม่เพิ่ม minimum window/pane sizes หรือเปลี่ยน autosave identifiers ของผู้ใช้
+
+Focused suite 80 tests และ release compilation ผ่าน โดยใช้ `REQNIVO_DATA_DIR` แยกจากข้อมูลผู้ใช้ เพิ่ม regression ใน `WorkspaceTests` ที่ตรวจ native search/Headers–Body picker bounds ใน workspace จริงที่ 1050×700, 1380×860 และ 1800×1000 ทั้ง light/dark, inspector bottom/right, message side-by-side/stacked และ collapse/reopen พร้อม URL/saved-filter name ยาว, 0/1/หลาย query terms, invalid draft, recovery/LAN status ตัวทดสอบไม่เรียก app launch task, engine หรือ updater และใช้ autosave namespace เฉพาะ fixture
+
+ผลนี้ยืนยันเฉพาะ geometry/behavior ที่ assertions ครอบคลุม ไม่ยืนยัน toolbar bounds, update-banner budget, native scroll/cell drawing, keyboard/VoiceOver, contrast หรือ appearance/focus ทุกสถานะ
+
+ผลเทียบ native benchmark กับ `main` อยู่ในหัวข้อถัดไป
+
+### Native benchmark เทียบ `main` — 24 พฤศจิกายน 2026
+
+Release bundle ทั้งสองฝั่ง บนเครื่องเดียวกัน (Apple Silicon / RAM 16 GB / macOS 27.2.1), workload 10,000 requests + 4 fixture flows, visible rows 10,000, benchmark complete, 0 timeouts รัน PR 3 รอบและ `main` 1 รอบ
+
+```sh
+./scripts/build-app.sh
+/usr/bin/python3 scripts/smoke-engine.py --app dist/Reqnivo.app --count 10000 --output .cache/native-burst.json
+```
+
+| Metric | PR (3 รอบ) | `main` | P2 (27 ต.ค.) |
+|---|---|---|---|
+| Filter end-to-end p50 | 56–58 ms | 55 ms | 52.7 ms |
+| Filter end-to-end p95 | 148–154 ms | 147 ms | 92.2 ms |
+| Filter model-only p95 | ~25 ms | ~24 ms | — |
+| Selection render p50 / p95 | 249–255 / 270–320 ms | 252 / 264 ms | — |
+| Detail ready p95 | ~239 ms | ~229 ms | — |
+
+- Harness **ไม่ผ่านเกณฑ์ filter p95 ≤ 100 ms ทั้งบน PR และ `main`** จึงไม่เขียน report JSON (assert ก่อนเขียนไฟล์) ตัวเลขข้างต้นมาจาก diagnostics ที่ harness พิมพ์ ไม่มี raw report แนบ
+- PR ไม่ต่างจาก `main` อย่างมีนัยสำคัญในตัวชี้วัดที่วัด จึงไม่พบหลักฐานว่า layout change ทำให้ช้าลง แต่ทั้งสองฝั่งช้ากว่า P2 เดิมที่ p95 92.2 ms สาเหตุยังไม่ได้ตรวจ (ต่างกันที่ OS 27.0.1 → 27.2.1 และสภาพเครื่อง) จึงไม่ถือว่า performance acceptance ผ่าน
+- ไม่ครอบคลุม frame/scroll, cell drawing, CPU interval และ paced workload
+
 ## P2 structured-filter acceptance — 27 ตุลาคม 2026
 
 Release build บน Apple Silicon / RAM 16 GB / macOS 27.0.1; native benchmark รันแยกจาก engine/rules smoke ใช้ ephemeral ports และ temporary data/CA ไม่แก้ system proxy/Keychain ผู้ใช้ Quit แอปเดิมก่อน build bundle ใหม่

@@ -79,7 +79,8 @@ on a second Mac remain unverified.
 2. Enable **Capture Mac Traffic** in the sidebar and approve the macOS permission
    request. This routes traffic from apps that use the selected network service's
    system proxy.
-3. For HTTPS, use **Install Certificate** to open the setup helper and install and
+3. For HTTPS, use **Certificate** (or the sidebar certificate
+   action when the Mac CA is not trusted) to open the setup helper and install and
    trust the capture CA on the client. Enable the host you want to inspect through
    **HTTPS** or **Enable Decryption**, then reconnect the client.
 4. Select a request to inspect its headers and body. Right-click it to create a
@@ -92,7 +93,7 @@ separate steps; existing TLS connections must reconnect before changes take effe
 
 ### Capture from a test device
 
-1. Stop capture, open **Capture Settings**, enable **Allow test devices on local
+1. Stop capture, open **Settings**, enable **Allow test devices on local
    network**, and start capture again. LAN access uses **Approve Devices on Mac**.
 2. Connect the device to the same trusted network and set its HTTP proxy to the
    Mac's LAN IP and proxy port shown in the certificate setup helper.
@@ -102,7 +103,7 @@ separate steps; existing TLS connections must reconnect before changes take effe
    username/password is needed. **Revoke** disconnects active traffic; approvals
    expire when capture stops. Approval is based on IP, not verified device identity.
    Mac loopback capture does not require approval.
-4. Open **Install Certificate** and follow the instructions for your device.
+4. Open **Certificate** and follow the instructions for your device.
    Enable HTTPS decryption for the host you are testing, then reconnect the client.
 
 iPhone and iPad require full certificate trust after profile installation. Android

@@ -57,6 +57,8 @@ python3 scripts/verify-engine-sources.py
 ./scripts/verify-app-package.sh
 ```
 
+การตรวจเปิดแอปใช้ data directory ชั่วคราวและพอร์ตว่างแยกจาก capture ที่ใช้งานจริง เมื่อจบจะหยุดทั้งแอปและโปรเซสลูก และตรวจว่าพอร์ตทดสอบถูกคืนแล้ว เพื่อไม่ทิ้ง engine ค้างไว้
+
 ผลอยู่ใน `dist/ci/` การตรวจนี้ไม่ยืนยัน Apple notarization, การเปิดครั้งแรกบน Mac
 อีกเครื่อง หรือการทำงานบน macOS 14 ส่วน integration ใช้ fixture และ CA ชั่วคราว
 ไม่เปลี่ยน system proxy หรือ trust store และไม่ได้ทดสอบ GUI/อุปกรณ์จริง

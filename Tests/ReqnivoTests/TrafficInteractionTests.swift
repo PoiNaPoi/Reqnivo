@@ -5,6 +5,77 @@ import XCTest
 
 @MainActor
 final class TrafficInteractionTests: XCTestCase {
+    func testRefreshDuringMouseSelectionCannotRestoreThePreviousRequest() {
+        for insertsRow in [false, true] {
+            var selected: String? = "flow-2"
+            let binding = Binding<String?>(get: { selected }, set: { selected = $0 })
+            let original = TrafficTable(rows: [flow(1), flow(2)], selectedID: binding)
+            let coordinator = TrafficTable.Coordinator(parent: original)
+            let table = TrafficTable.TrafficTableView()
+            table.sortDescriptors = [NSSortDescriptor(key: "id", ascending: false)]
+            table.dataSource = coordinator
+            coordinator.table = table
+            coordinator.update(original)
+            XCTAssertEqual(table.selectedRow, 0)
+
+            // AppKit changes the highlight during tracking, but commits selection on mouse-up.
+            table.isHandlingMouseSelection = true
+            table.selectRowIndexes(IndexSet(integer: 1), byExtendingSelection: false)
+            let refresh = TrafficTable(rows: insertsRow ? [flow(1), flow(2), flow(3)] : original.rows,
+                                       selectedID: binding)
+            coordinator.update(refresh)
+            XCTAssertEqual(table.selectedRow, 1, "A refresh must not undo the row being clicked")
+            XCTAssertEqual(coordinator.rows.count, 2, "Reloading must wait until mouse tracking finishes")
+            XCTAssertEqual(selected, "flow-2")
+
+            coordinator.tableViewSelectionDidChange(Notification(name: NSTableView.selectionDidChangeNotification))
+            table.isHandlingMouseSelection = false
+            coordinator.finishMouseSelection()
+            XCTAssertEqual(selected, "flow-1")
+            XCTAssertEqual(coordinator.rows[table.selectedRow].id, "flow-1")
+            XCTAssertEqual(coordinator.rows.count, insertsRow ? 3 : 2)
+        }
+    }
+
+    func testClickingEmptyTableBackgroundKeepsTheInspectedRequest() async throws {
+        var selected: String? = "flow-1"
+        let name = "Reqnivo.Tests.Background.\(UUID().uuidString)"
+        defer { UserDefaults.standard.removeObject(forKey: "NSTableView Columns " + name) }
+        let host = NSHostingController(rootView: TrafficTable(
+            rows: [flow(1), flow(2)], selectedID: Binding(get: { selected }, set: { selected = $0 }),
+            autosaveName: name))
+        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 900, height: 400),
+                              styleMask: [.titled], backing: .buffered, defer: false)
+        window.contentViewController = host
+        window.setContentSize(NSSize(width: 900, height: 400))
+        defer { window.contentViewController = nil }
+        host.view.layoutSubtreeIfNeeded()
+        await drainMainQueue()
+        func findTable(_ view: NSView) -> NSTableView? {
+            if let table = view as? NSTableView { return table }
+            return view.subviews.lazy.compactMap { findTable($0) }.first
+        }
+        let table = try XCTUnwrap(findTable(host.view))
+        let selectedRow = table.selectedRow
+        XCTAssertGreaterThanOrEqual(selectedRow, 0)
+        let point = NSPoint(x: 30, y: table.rect(ofRow: table.numberOfRows - 1).maxY + 30)
+        XCTAssertEqual(table.row(at: point), -1)
+        let location = table.convert(point, to: nil)
+        let down = try XCTUnwrap(NSEvent.mouseEvent(with: .leftMouseDown, location: location,
+            modifierFlags: [], timestamp: 0, windowNumber: window.windowNumber, context: nil,
+            eventNumber: 0, clickCount: 1, pressure: 1))
+        let up = try XCTUnwrap(NSEvent.mouseEvent(with: .leftMouseUp, location: location,
+            modifierFlags: [], timestamp: 0.1, windowNumber: window.windowNumber, context: nil,
+            eventNumber: 1, clickCount: 1, pressure: 0))
+        NSApp.postEvent(up, atStart: false)
+        table.mouseDown(with: down)
+        _ = NSApp.nextEvent(matching: .leftMouseUp, until: Date(), inMode: .default, dequeue: true)
+        await drainMainQueue()
+        XCTAssertEqual(table.selectedRow, selectedRow)
+        XCTAssertEqual(selected, "flow-1")
+        XCTAssertTrue(window.firstResponder === table)
+    }
+
     func testResetColumnsRestoresReadableOrderWithoutChangingTrafficSelectionOrSort() {
         let table = NSTableView(frame: NSRect(x: 0, y: 0, width: 800, height: 400))
         let scroll = NSScrollView(frame: table.frame)
@@ -54,6 +125,7 @@ final class TrafficInteractionTests: XCTestCase {
             return view.subviews.lazy.compactMap { findTable($0) }.first
         }
         let table = try XCTUnwrap(findTable(host.view))
+        XCTAssertFalse(table.allowsMultipleSelection)
         XCTAssertEqual(table.sortDescriptors.first?.key, "id")
         XCTAssertEqual(table.sortDescriptors.first?.ascending, false)
         func displayedIDs() -> [String] {
@@ -137,6 +209,8 @@ final class TrafficInteractionTests: XCTestCase {
         let menu = NSMenu()
         coordinator.menuNeedsUpdate(menu)
         let item = try XCTUnwrap(menu.items.first { $0.title == "Breakpoint…" })
+        let pin = try XCTUnwrap(menu.items.first { $0.title == "Pin Request" })
+        XCTAssertEqual((pin.representedObject as? TrafficTable.Coordinator.PinAction)?.ids, ["flow-2"])
         XCTAssertEqual((item.representedObject as? TrafficFlow)?.id, "flow-2")
         coordinator.rows = [flow(3), flow(1)]
         coordinator.addBreakpoint(item)
