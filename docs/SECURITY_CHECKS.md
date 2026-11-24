@@ -87,6 +87,8 @@ Swift resolve dependencies และ build เตรียม shared manifest/SD
 ผลด้านความเร็วต้องเทียบเวลารวมของขั้นเตรียม cache และ build บน GitHub Actions จริง
 
 Actions ใน CI และ CodeQL pin ด้วย full commit SHA เพื่อให้แต่ละ run ใช้โค้ดรุ่นที่ระบุแน่นอน
+ขั้น `init` และ `analyze` ของ CodeQL ต้อง pin SHA เดียวกันและอัปเดตพร้อมกัน
+โดย Dependabot จัด `github/codeql-action/*` ไว้ในกลุ่มเดียวกันแล้ว
 
 ระบบนี้ไม่ดาวน์โหลดหรือเปิดแอป mitmproxy และไม่วิเคราะห์ binary ใน `vendor` หรือ `dist`
 การสแกนผ่านไม่ได้ยืนยันว่าแอปหรือ engine ปลอดช่องโหว่ทั้งหมด
