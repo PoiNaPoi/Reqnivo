@@ -7,6 +7,7 @@ final class JSONFoldGutter: NSView {
     var controls: [JSONFoldControl] = [] { didSet { needsLayout = true } }
     var onToggle: ((Int) -> Void)?
     var lineStarts: [Int] = [] { didSet { needsDisplay = true } }
+    var lineNumbers: [Int] = [] { didSet { needsDisplay = true } }
     private var buttons: [Int: NSButton] = [:]
     override var isFlipped: Bool { true }
     override var wantsDefaultClipping: Bool { true }
@@ -46,7 +47,7 @@ final class JSONFoldGutter: NSView {
             .foregroundColor: NSColor.secondaryLabelColor
         ]
         func drawNumber(_ index: Int, rect: NSRect) {
-            let label = "\(index + 1)" as NSString
+            let label = "\(lineNumbers.count == lineStarts.count ? lineNumbers[index] : index + 1)" as NSString
             let size = label.size(withAttributes: attributes)
             let point = textView.convert(NSPoint(x: 0, y: rect.midY + origin.y), to: self)
             label.draw(at: NSPoint(x: bounds.maxX - size.width - 6, y: point.y - size.height / 2),
@@ -156,8 +157,9 @@ final class JSONPreviewContainer: NSView {
         gutter.needsDisplay = true
     }
 
-    func setFoldControls(_ controls: [JSONFoldControl], lineStarts: [Int] = []) {
-        gutterWidth.constant = lineStarts.isEmpty ? (controls.isEmpty ? 0 : 24) : max(64, 30 + CGFloat("\(lineStarts.count)".count) * 7)
+    func setFoldControls(_ controls: [JSONFoldControl], lineStarts: [Int] = [], lineNumbers: [Int] = []) {
+        gutterWidth.constant = lineStarts.isEmpty ? (controls.isEmpty ? 0 : 24) : max(64, 30 + CGFloat("\(lineNumbers.last ?? lineStarts.count)".count) * 7)
+        gutter.lineNumbers = lineNumbers
         gutter.lineStarts = lineStarts
         gutter.controls = controls
     }

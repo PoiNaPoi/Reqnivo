@@ -5,6 +5,147 @@ import XCTest
 
 @MainActor
 final class WorkspaceTests: XCTestCase {
+    func testCaptureControlKeepsLayoutStableAcrossRunningAndBusyStates() async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let model = CaptureModel(settingsStore: AppSettingsStore(root: root))
+        for appearance in [NSAppearance.Name.aqua, .darkAqua,
+                           .accessibilityHighContrastAqua, .accessibilityHighContrastDarkAqua] {
+            model.running = false
+            model.busy = false
+            let host = NSHostingView(rootView: HStack(spacing: 8) {
+                CaptureControl(model: model)
+                Text("Clear")
+            })
+            host.appearance = NSAppearance(named: appearance)
+            let initialSize = host.fittingSize
+            host.frame = NSRect(origin: .zero, size: initialSize)
+            for (running, busy) in [(false, true), (true, false), (true, true), (false, false)] {
+                model.running = running
+                model.busy = busy
+                try await Task.sleep(for: .milliseconds(20))
+                host.layoutSubtreeIfNeeded()
+                XCTAssertEqual(host.fittingSize.width, initialSize.width, accuracy: 1,
+                               "Changing capture state must not move neighboring controls")
+                XCTAssertEqual(host.fittingSize.height, initialSize.height, accuracy: 1,
+                               "The progress indicator must not change the control height")
+            }
+        }
+    }
+
+    func testWorkspaceKeepsSearchAndInspectorInsideViewport() async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let flow = TrafficFlow(id: "viewport", method: "GET", url: "https://example.test/" + String(repeating: "path/", count: 50),
+                               host: "example.test", status: 200, state: "complete",
+                               started: 1, duration: 0.1, size: 2, error: nil)
+        let message = FlowMessage(headers: [], body: "{}", truncated: false, streamed: false, httpVersion: "HTTP/2.0")
+        let model = CaptureModel(detailLoader: { _ in
+            FlowDetail(summary: flow, request: message, response: message)
+        }, settingsStore: AppSettingsStore(root: root))
+        model.applyTrafficEvents([FlowEvent(sequence: 1, flow: flow)])
+        XCTAssertTrue(model.saveFilter(name: String(repeating: "Long saved filter ", count: 12)))
+        let name = "Reqnivo.Tests.Workspace.\(UUID().uuidString)"
+        defer {
+            for key in UserDefaults.standard.dictionaryRepresentation().keys where key.contains(name) {
+                UserDefaults.standard.removeObject(forKey: key)
+            }
+        }
+        let host = NSHostingController(rootView: VStack(spacing: 0) {
+            CaptureWorkspace(model: model, autosavePrefix: name)
+        }.frame(minWidth: 1050, minHeight: 700))
+        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 1050, height: 700),
+                              styleMask: [.titled, .resizable], backing: .buffered, defer: false)
+        window.contentViewController = host
+        defer { window.contentViewController = nil }
+        func descendants(_ view: NSView) -> [NSView] {
+            view.subviews.flatMap { [$0] + descendants($0) }
+        }
+        for (size, appearance) in [
+            (NSSize(width: 1050, height: 700), NSAppearance.Name.aqua),
+            (NSSize(width: 1050, height: 700), .darkAqua),
+            (NSSize(width: 1380, height: 860), .aqua),
+            (NSSize(width: 1380, height: 860), .darkAqua),
+            (NSSize(width: 1800, height: 1000), .aqua),
+            (NSSize(width: 1800, height: 1000), .darkAqua)
+        ] {
+            window.appearance = NSAppearance(named: appearance)
+            model.recoveryNeeded = appearance == .darkAqua
+            model.allowLAN = appearance == .darkAqua
+            model.search = appearance == .aqua ? "" :
+                (size.width == 1380 ? "method:GET" : "host:example.test method:GET -status:400-599")
+            model.applySearch()
+            if appearance == .darkAqua && size.width != 1380 {
+                model.search = "status:999"
+                model.applySearch()
+                XCTAssertNotNil(model.queryError)
+            }
+            for vertical in [false, true] {
+                model.inspectorOnRight = vertical
+                for stacked in [false, true] {
+                    model.messagesStacked = stacked
+                    model.selectTraffic([flow.id], primary: flow.id)
+                    window.setContentSize(size)
+                    for _ in 0..<10 {
+                        host.view.layoutSubtreeIfNeeded()
+                        try await Task.sleep(for: .milliseconds(10))
+                    }
+                    let views = descendants(host.view)
+                    let search = try XCTUnwrap(views.compactMap { $0 as? NSTextField }.first { $0.isEditable })
+                    XCTAssertEqual(search.stringValue, model.search)
+                    let pickers = views.compactMap { $0 as? NSSegmentedControl }
+                    XCTAssertEqual(pickers.count, 2)
+                    for control in [search as NSView] + pickers {
+                        let bounds = control.convert(control.bounds, to: host.view)
+                        XCTAssertGreaterThanOrEqual(bounds.minX, host.view.bounds.minX - 1)
+                        XCTAssertGreaterThanOrEqual(bounds.minY, host.view.bounds.minY - 1)
+                        XCTAssertLessThanOrEqual(bounds.maxX, host.view.bounds.maxX + 1)
+                        XCTAssertLessThanOrEqual(bounds.maxY, host.view.bounds.maxY + 1)
+                    }
+                    XCTAssertFalse(model.running)
+                    XCTAssertEqual(model.selectedID, flow.id)
+                    if size.width == 1050 && appearance == .aqua && !vertical && !stacked {
+                        let workspaceSplit = try XCTUnwrap(views.compactMap { $0 as? NSSplitView }
+                            .first { $0.autosaveName == name + ".Workspace.horizontal" })
+                        let controller = try XCTUnwrap(workspaceSplit.delegate as? NSSplitViewController)
+                        let initialSearchBounds = search.convert(search.bounds, to: host.view)
+                        for position in [CGFloat(180), workspaceSplit.bounds.height - 10, CGFloat(240)] {
+                            workspaceSplit.setPosition(position, ofDividerAt: 0)
+                            for _ in 0..<5 {
+                                host.view.layoutSubtreeIfNeeded()
+                                try await Task.sleep(for: .milliseconds(10))
+                            }
+                            let bounds = search.convert(search.bounds, to: host.view)
+                            XCTAssertEqual(bounds.minY, initialSearchBounds.minY, accuracy: 1,
+                                           "Moving the native divider must not move the workspace search")
+                        }
+                        for collapsed in [true, false, true, false] {
+                            controller.splitViewItems[1].isCollapsed = collapsed
+                            for _ in 0..<5 {
+                                host.view.layoutSubtreeIfNeeded()
+                                try await Task.sleep(for: .milliseconds(10))
+                            }
+                            let bounds = search.convert(search.bounds, to: host.view)
+                            XCTAssertEqual(bounds.minY, initialSearchBounds.minY, accuracy: 1,
+                                           "Native inspector collapse must not move the workspace search")
+                            XCTAssertEqual(bounds.minX, initialSearchBounds.minX, accuracy: 1)
+                            XCTAssertEqual(bounds.width, initialSearchBounds.width, accuracy: 1)
+                        }
+                    }
+                    model.selectTraffic([], primary: nil)
+                    for _ in 0..<5 {
+                        host.view.layoutSubtreeIfNeeded()
+                        try await Task.sleep(for: .milliseconds(10))
+                    }
+                    let collapsedBounds = search.convert(search.bounds, to: host.view)
+                    XCTAssertGreaterThanOrEqual(collapsedBounds.minY, host.view.bounds.minY - 1)
+                    XCTAssertLessThanOrEqual(collapsedBounds.maxY, host.view.bounds.maxY + 1)
+                    XCTAssertFalse(descendants(host.view).contains { $0 is NSSegmentedControl && !$0.isHiddenOrHasHiddenAncestor })
+                }
+            }
+        }
+    }
+
     func testDividerRestoresWhenRecreatingTheWorkspace() {
         let name = "Reqnivo.Tests.\(UUID().uuidString)"
         let key = "NSSplitView Subview Frames " + name + ".horizontal"
@@ -141,5 +282,25 @@ final class WorkspaceTests: XCTestCase {
         let idCell = coordinator.tableView(table, viewFor: idCol, row: 0) as? NSTableCellView
         XCTAssertEqual(idCell?.textField?.stringValue, "42")
         XCTAssertEqual(idCell?.textField?.accessibilityLabel(), "Request 42")
+    }
+
+    func testStatusTintDoesNotColorOtherCellsOrOverrideSelection() throws {
+        let flow = TrafficFlow(id: "error", method: "POST", url: "https://api.test/items", host: "api.test",
+                               status: 500, state: "error", started: 1, duration: 0.1, size: 20, error: "Failed")
+        let coordinator = TrafficTable.Coordinator(parent: TrafficTable(rows: [flow], selectedID: .constant(nil)))
+        coordinator.rows = [flow]
+        let table = NSTableView()
+        let status = try XCTUnwrap(coordinator.tableView(table, viewFor: NSTableColumn(
+            identifier: NSUserInterfaceItemIdentifier("status")), row: 0) as? NSTableCellView)
+        let method = try XCTUnwrap(coordinator.tableView(table, viewFor: NSTableColumn(
+            identifier: NSUserInterfaceItemIdentifier("method")), row: 0) as? NSTableCellView)
+        XCTAssertEqual(status.textField?.textColor, WorkspaceStyle.error)
+        XCTAssertEqual(method.textField?.textColor, WorkspaceStyle.textPrimary)
+        status.backgroundStyle = .emphasized
+        XCTAssertEqual(status.textField?.textColor, .alternateSelectedControlTextColor)
+        status.backgroundStyle = .normal
+        status.appearance = NSAppearance(named: .darkAqua)
+        status.viewDidChangeEffectiveAppearance()
+        XCTAssertEqual(status.textField?.textColor, WorkspaceStyle.error)
     }
 }

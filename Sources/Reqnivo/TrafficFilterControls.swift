@@ -1,7 +1,9 @@
+import AppKit
 import SwiftUI
 
 struct TrafficFilterControls: View {
     @ObservedObject var model: CaptureModel
+    var focusRequest = 0
     @State private var adding = false
     @State private var field: TrafficQuery.Field = .host
     @State private var value = ""
@@ -9,18 +11,58 @@ struct TrafficFilterControls: View {
     @State private var naming = false
     @State private var filterName = ""
     @State private var renaming: SavedTrafficFilter?
+    @State private var showSearchHelp = false
+    @FocusState private var focus: Focus?
+    @FocusState private var valueFocused: Bool
+
+    private enum Focus: Hashable { case search, addFilter, help }
 
     private var active: SavedTrafficFilter? {
         model.savedFilters.first { $0.id == model.activeSavedFilterID }
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            HStack(spacing: 10) {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 8) {
+                HStack(spacing: 6) {
+                    Image(systemName: "magnifyingglass").accessibilityHidden(true)
+                    TextField("Search traffic…", text: $model.search)
+                        .textFieldStyle(.plain)
+                        .focused($focus, equals: .search)
+                        .accessibilityLabel("Filter traffic")
+                        .help("AND filters: host, path, method, status, type, state. Prefix - to exclude. Quote values containing spaces.")
+                        .onSubmit { model.applySearch() }
+                        .onExitCommand {
+                            if !model.search.isEmpty { model.search = "" }
+                            else { focus = nil }
+                        }
+                    if !model.search.isEmpty {
+                        Button { model.search = "" } label: { Image(systemName: "xmark.circle.fill") }
+                            .buttonStyle(.plain)
+                            .accessibilityLabel("Clear traffic filter")
+                    }
+                }
+                .font(.system(size: 13))
+                .padding(8)
+                .background(Color(nsColor: WorkspaceStyle.panel), in: RoundedRectangle(cornerRadius: 6))
+                .overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(Color(nsColor: WorkspaceStyle.controlBoundary)))
+                .frame(minWidth: 180)
                 Button("Add Filter", systemImage: "line.3.horizontal.decrease.circle") { adding = true }
+                    .fixedSize()
+                    .focused($focus, equals: .addFilter)
                     .disabled(model.queryError != nil)
                     .popover(isPresented: $adding) { builder }
                 Menu {
+                    Button("Save Current Filter…") {
+                        renaming = nil
+                        filterName = ""
+                        naming = true
+                    }.disabled(model.queryError != nil)
+                    if let active {
+                        Button("Update \(active.name)") { model.saveFilter(name: active.name, replacingID: active.id) }
+                            .disabled(model.queryError != nil || !model.savedFilterModified)
+                    }
+                    Divider()
                     if model.savedFilters.isEmpty {
                         Text("No saved filters")
                     }
@@ -38,39 +80,43 @@ struct TrafficFilterControls: View {
                         }
                     }
                 } label: {
-                    Label(active.map { $0.name + (model.savedFilterModified ? " (modified)" : "") } ?? "Saved Filters",
-                          systemImage: "line.3.horizontal.decrease.circle")
-                        .lineLimit(1).truncationMode(.tail)
+                    Label("Saved Filters", systemImage: "line.3.horizontal.decrease")
                 }
-                .frame(maxWidth: 220)
-                .fixedSize(horizontal: true, vertical: false)
-                .help(active?.name ?? "Apply or manage saved filters")
-                Button("Save…") {
-                    renaming = nil
-                    filterName = ""
-                    naming = true
-                }.disabled(model.queryError != nil)
-                if let active {
-                    Button("Update") { model.saveFilter(name: active.name, replacingID: active.id) }
-                        .disabled(model.queryError != nil || !model.savedFilterModified)
-                }
-                Spacer()
-                if !model.selectedIDs.isEmpty {
-                    Text("\(model.selectedIDs.count) selected")
-                    if model.hiddenSelectionCount > 0 {
-                        Text("\(model.hiddenSelectionCount) hidden by filters")
-                            .foregroundStyle(.secondary)
+                .fixedSize()
+                .help("Save, apply or manage filters")
+                Button { showSearchHelp.toggle() } label: { Image(systemName: "questionmark.circle") }
+                    .buttonStyle(.plain)
+                    .focused($focus, equals: .help)
+                    .accessibilityLabel("Traffic search help")
+                    .popover(isPresented: $showSearchHelp) {
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("Search traffic").font(.headline)
+                            Text("Combine text with filters, for example:")
+                            Text("host:api.test method:GET status:400-499").monospaced()
+                            Text("Use host, path, method, status, type or state. Filters use AND. Prefix - to exclude; quote values containing spaces.")
+                        }.padding().frame(width: 360)
                     }
-                    if let primary = model.selectedID, !model.rows.contains(where: { $0.id == primary }) {
-                        Text("Inspecting hidden request").foregroundStyle(.secondary)
-                    }
-                    Button("Deselect All") { model.selectTraffic([], primary: nil) }
-                }
             }
-            .font(.caption)
+            .font(.system(size: 12))
+            if let active {
+                HStack(spacing: 6) {
+                    Text(active.name).lineLimit(1).help(active.name)
+                    if model.savedFilterModified {
+                        Text("Modified").foregroundStyle(Color(nsColor: WorkspaceStyle.warning))
+                    }
+                }
+                .font(.caption)
+                .accessibilityElement(children: .combine)
+            }
+            if let selectedID = model.selectedID, !model.rows.contains(where: { $0.id == selectedID }) {
+                Text("Inspecting a request hidden by filters")
+                    .font(.caption)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
             if let error = model.queryError {
                 Label("\(error). Showing the last valid query.", systemImage: "exclamationmark.triangle")
-                    .font(.caption).foregroundStyle(.red)
+                    .font(.caption).foregroundStyle(Color(nsColor: WorkspaceStyle.error))
+                    .fixedSize(horizontal: false, vertical: true)
                     .accessibilityLabel("Invalid traffic query. \(error). Showing the last valid query.")
             }
             if !model.effectiveQuery.terms.isEmpty {
@@ -88,6 +134,7 @@ struct TrafficFilterControls: View {
                                 }
                                 .help("Toggle include/exclude")
                                 .accessibilityLabel("\(term.excluded ? "Exclude" : "Include") \(term.field.rawValue) \(term.value). Toggle.")
+                                .accessibilityValue(term.excluded ? "Excluded" : "Included")
                                 Button {
                                     model.editQuery {
                                         guard $0.terms.indices.contains(index), $0.terms[index] == term else { return }
@@ -98,14 +145,32 @@ struct TrafficFilterControls: View {
                             }
                             .buttonStyle(.plain)
                             .padding(.horizontal, 8).padding(.vertical, 4)
-                            .background(.quaternary, in: Capsule())
+                            .background(Color(nsColor: WorkspaceStyle.panel), in: Capsule())
+                            .overlay(Capsule().strokeBorder(Color(nsColor: WorkspaceStyle.divider)))
+                            .help("\(term.excluded ? "Exclude" : "Include") \(term.field.rawValue): \(term.value)")
                         }
                     }.font(.caption)
                 }
+                .scrollIndicators(.hidden)
                 .disabled(model.queryError != nil)
             }
         }
-        .padding(.horizontal, 14).padding(.vertical, 6)
+        .foregroundStyle(Color(nsColor: WorkspaceStyle.textSecondary))
+        .tint(Color(nsColor: WorkspaceStyle.accent))
+        .padding(.horizontal, 12).padding(.vertical, 8)
+        // Match the traffic pane's width floor when measuring multiline diagnostics.
+        .frame(minWidth: 320, alignment: .leading)
+        .onChange(of: focusRequest) { _, _ in
+            adding = false
+            showSearchHelp = false
+            focus = .search
+        }
+        .onChange(of: adding) { wasAdding, isAdding in
+            if wasAdding && !isAdding && focus != .search { focus = .addFilter }
+        }
+        .onChange(of: showSearchHelp) { wasShowing, isShowing in
+            if wasShowing && !isShowing && focus != .search { focus = .help }
+        }
         .alert(renaming == nil ? "Save Filter" : "Rename Filter", isPresented: $naming) {
             TextField("Filter name", text: $filterName)
             Button("Cancel", role: .cancel) {}
@@ -133,6 +198,7 @@ struct TrafficFilterControls: View {
                 }
             } else {
                 TextField(field == .status ? "100–599 or 400-499" : "Value", text: $value)
+                    .focused($valueFocused)
                     .onSubmit { add() }
             }
             Toggle("Exclude matching traffic (display only)", isOn: $excluded)
@@ -142,6 +208,7 @@ struct TrafficFilterControls: View {
             }
         }
         .padding().frame(width: 350)
+        .onAppear { valueFocused = true }
         .onChange(of: field) { _, _ in value = "" }
     }
 

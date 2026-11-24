@@ -1,5 +1,13 @@
 # Baseline
 
+## Premium workspace layout follow-up — 24 พฤศจิกายน 2026
+
+แก้ native minimum-size measurement ของ sidebar status และ filter diagnostics: ข้อความ multiline ที่ใช้ `fixedSize` ถูกวัดด้วยความกว้างใกล้ศูนย์ ทำให้ sidebar ส่ง fitting height 1,717pt และขยาย workspace เกิน viewport การกำหนด width floor ตาม sidebar 200pt และ traffic pane 320pt เดิมป้องกันการวัดนี้ โดยไม่เพิ่ม minimum window/pane sizes หรือเปลี่ยน autosave identifiers ของผู้ใช้
+
+Focused suite 80 tests และ release compilation ผ่าน โดยใช้ `REQNIVO_DATA_DIR` แยกจากข้อมูลผู้ใช้ เพิ่ม regression ใน `WorkspaceTests` ที่ตรวจ native search/Headers–Body picker bounds ใน workspace จริงที่ 1050×700, 1380×860 และ 1800×1000 ทั้ง light/dark, inspector bottom/right, message side-by-side/stacked และ collapse/reopen พร้อม URL/saved-filter name ยาว, 0/1/หลาย query terms, invalid draft, recovery/LAN status ตัวทดสอบไม่เรียก app launch task, engine หรือ updater และใช้ autosave namespace เฉพาะ fixture
+
+ผลนี้ยืนยันเฉพาะ geometry/behavior ที่ assertions ครอบคลุม ไม่ยืนยัน toolbar bounds, update-banner budget, native scroll/cell drawing, keyboard/VoiceOver, contrast หรือ appearance/focus ทุกสถานะ ยังไม่ได้สร้าง/เปิด bundle ใหม่หรือรัน native benchmark หลังแก้ layout; performance acceptance และ baseline จาก `main` บน workload/เครื่องเดียวกันยังค้าง ไม่ใช้ผล P2 ด้านล่างแทนการเทียบครั้งใหม่
+
 ## P2 structured-filter acceptance — 27 ตุลาคม 2026
 
 Release build บน Apple Silicon / RAM 16 GB / macOS 27.0.1; native benchmark รันแยกจาก engine/rules smoke ใช้ ephemeral ports และ temporary data/CA ไม่แก้ system proxy/Keychain ผู้ใช้ Quit แอปเดิมก่อน build bundle ใหม่

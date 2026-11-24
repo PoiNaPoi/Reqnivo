@@ -16,6 +16,8 @@ struct JSONFoldControl {
 struct JSONFoldDisplay {
     let content: NSAttributedString
     let controls: [JSONFoldControl]
+    // Displayed offsets after which `lines` original lines are hidden by a fold.
+    var hiddenLines: [(location: Int, lines: Int)] = []
 }
 
 enum JSONFolding {
@@ -63,6 +65,7 @@ enum JSONFolding {
         var controls: [JSONFoldControl] = []
         var cursor = 0
         var removed = 0
+        var hiddenLines: [(location: Int, lines: Int)] = []
         for region in regions {
             if region.opening < cursor { continue } // Hidden by a collapsed ancestor.
             let isCollapsed = collapsed.contains(region.opening)
@@ -73,12 +76,16 @@ enum JSONFolding {
                 var attributes = content.attributes(at: region.opening, effectiveRange: nil)
                 attributes[.foregroundColor] = NSColor.secondaryLabelColor
                 output.append(NSAttributedString(string: " … ", attributes: attributes))
+                let hidden = (content.string as NSString)
+                    .substring(with: NSRange(location: region.opening, length: region.closing - region.opening))
+                    .utf16.filter { $0 == 10 }.count
+                hiddenLines.append((output.length, hidden))
                 output.append(content.attributedSubstring(from: NSRange(location: region.closing, length: 1)))
                 cursor = region.closing + 1
                 removed += region.closing - region.opening - 1 - 3
             }
         }
         output.append(content.attributedSubstring(from: NSRange(location: cursor, length: content.length - cursor)))
-        return JSONFoldDisplay(content: output, controls: controls)
+        return JSONFoldDisplay(content: output, controls: controls, hiddenLines: hiddenLines)
     }
 }

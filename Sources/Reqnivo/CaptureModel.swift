@@ -18,9 +18,8 @@ final class CaptureModel: ObservableObject {
     @Published private(set) var retainedCount = 0
     @Published var selectedID: String? {
         didSet {
-            if let selectedID {
-                if !selectedIDs.contains(selectedID) { selectedIDs = [selectedID] }
-            } else { selectedIDs = [] }
+            let selection: Set<String> = selectedID.map { [$0] } ?? []
+            if selectedIDs != selection { selectedIDs = selection }
             if oldValue != selectedID {
                 pendingRender = selectedID.map { PendingRender(id: $0, started: CFAbsoluteTimeGetCurrent(), detailReady: nil) }
                 loadSelection()
@@ -691,7 +690,6 @@ final class CaptureModel: ObservableObject {
 
     func selectTraffic(_ ids: Set<String>, primary: String?) {
         let retained = ids.intersection(Set(buffer.rows.map(\.id)))
-        selectedIDs = retained
         selectedID = primary.flatMap { retained.contains($0) ? $0 : nil } ??
             fallbackPrimary(in: retained)
     }
